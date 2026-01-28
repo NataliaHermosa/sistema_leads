@@ -1,0 +1,119 @@
+# =================================
+# CREDENCIAIS E SEGREDOS (NUNCA COMMITAR!)
+# =================================
+creds/
+*.json
+*.key
+*.pem
+*.p12
+.env
+.env.local
+.env.production
+.secret/
+secrets/
+service_account.json
+google-credentials.json
+client_secret*.json
+
+# Streamlit Secrets (APENAS PARA DESENVOLVIMENTO LOCAL)
+.streamlit/secrets.toml
+
+# =================================
+# PYTHON
+# =================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv/
+
+# Pipenv
+Pipfile.lock
+
+# Poetry
+poetry.lock
+
+# PyCharm
+.idea/
+*.iml
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# =================================
+# SISTEMA / OS
+# =================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# =================================
+# STREAMLIT
+# =================================
+.streamlit/cache/
+.streamlit/data/
+.streamlit/static/
+.streamlit/logs/
+
+# =================================
+# WINDOWS ESPECÍFICO
+# =================================
+# Arquivos de lixeira do Windows
+$RECYCLE.BIN/
+
+# Arquivos de hibernação
+*.stackdump
+
+# Backup files
+*.bak
+*.tmp
+*.temp
+
+# =================================
+# SEU APLICATIVO
+# =================================
+# Arquivos de dados locais (se tiver)
+data/local/
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# Uploads temporários
+uploads/
+temp/
+tmp/

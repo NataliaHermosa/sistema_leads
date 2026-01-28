@@ -1,0 +1,2036 @@
+import streamlit as st
+import gspread
+import pandas as pd
+from google.oauth2.service_account import Credentials
+import plotly.express as px
+import io
+import base64
+from PIL import Image
+import os
+from datetime import datetime
+
+# ============================================================================
+# 1. CONFIGURAÇÃO, TEMA E CREDENCIAIS
+# ============================================================================
+st.set_page_config(
+    page_title="Gestão de Leads | Gov Academy", 
+    layout="wide", 
+    initial_sidebar_state="collapsed"
+)
+
+# Inicializar session_state
+if 'opcoes' not in st.session_state:
+    st.session_state.opcoes = {'cidades': {}}
+if 'menu_atual' not in st.session_state:
+    st.session_state.menu_atual = "Dashboard"
+if 'search_term' not in st.session_state:
+    st.session_state.search_term = ""
+
+# ================================================
+# ✅ CREDENCIAIS FIXAS (USANDO DICIONÁRIO)
+# ================================================
+SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
+SPREADSHEET_ID = "1uZmmdxe1kqlBoOWsx9ghv2xNWLSBqncNiB47MP0qoAU"
+
+# Cores
+PRIMARY_COLOR = "#522b7b"
+BG_COLOR = "#F0F4FF"
+LOGO_HEIGHT = 80
+
+# ============================================================================
+# 2. FUNÇÕES DE DADOS (GOOGLE SHEETS) 
+# ============================================================================
+@st.cache_resource
+def init_gsheets():
+    """Inicializa conexão com Google Sheets usando arquivo de credenciais"""
+    try:
+        creds = get_credentials()
+        if creds is None:
+            st.error("Não foi possível obter credenciais")
+            return None
+            
+        client = gspread.authorize(creds)
+        return client.open_by_key(SPREADSHEET_ID)
+    except Exception as e:
+        st.error(f"Erro na conexão: {e}")
+        return None
+
+# ============================================================================
+# 3. FUNÇÕES AUXILIARES PARA CREDENCIAIS
+# ============================================================================
+def get_credentials():
+    """Retorna credenciais - funciona local e na nuvem"""
+    try:
+        # Verifica se estamos no Streamlit Cloud (tem secrets)
+        try:
+            # Tenta acessar secrets - funciona no Streamlit Cloud
+            if hasattr(st, 'secrets') and st.secrets:
+                # Verifica se tem as chaves necessárias
+                required_keys = ['project_id', 'private_key', 'client_email']
+                if all(key in st.secrets for key in required_keys):
+                    creds_dict = {
+                        "type": "service_account",
+                        "project_id": st.secrets["project_id"],
+                        "private_key_id": st.secrets.get("private_key_id", ""),
+                        "private_key": st.secrets["private_key"].replace('\\n', '\n'),
+                        "client_email": st.secrets["client_email"],
+                        "client_id": st.secrets.get("client_id", ""),
+                        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                        "token_uri": "https://oauth2.googleapis.com/token",
+                        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+                        "client_x509_cert_url": st.secrets.get("client_x509_cert_url", ""),
+                        "universe_domain": "googleapis.com"
+                    }
+                    return Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+        except Exception as secrets_error:
+            # Não é erro crítico, continua tentando outras opções
+            pass
+        
+        # Para desenvolvimento local - tenta arquivo
+        import os
+        
+        # Caminhos possíveis para o arquivo de credenciais
+        caminhos_tentados = [
+            r"C:\Users\Natalia Bastos\sistema_leads\creds\service_account.json",
+            "./creds/service_account.json",
+            "creds/service_account.json",
+            os.path.join(os.path.dirname(__file__), "creds", "service_account.json"),
+            os.path.join(os.path.dirname(__file__), "service_account.json"),
+            "service_account.json"
+        ]
+        
+        for caminho in caminhos_tentados:
+            if os.path.exists(caminho):
+                try:
+                    return Credentials.from_service_account_file(caminho, scopes=SCOPES)
+                except Exception as file_error:
+                    continue  # Tenta o próximo caminho
+        
+        # Se chegou aqui, não encontrou credenciais
+        st.error("""
+        ❌ **Não foi possível carregar as credenciais do Google Sheets**
+        
+        Para desenvolvimento local, você precisa de UMA destas opções:
+        
+        **Opção 1:** Ter o arquivo `service_account.json` na pasta `creds/`
+        **Opção 2:** Configurar o arquivo `.streamlit/secrets.toml`
+        
+        Arquivo esperado em: `C:\\Users\\Natalia Bastos\\sistema_leads\\creds\\service_account.json`
+        
+        Para produção no Streamlit Cloud, configure os secrets no painel da aplicação.
+        """)
+        
+        # Mostra informações de debug
+        with st.expander("🔍 Informações de debug"):
+            st.write("**Caminhos verificados:**")
+            for caminho in caminhos_tentados:
+                existe = "✅ EXISTE" if os.path.exists(caminho) else "❌ NÃO EXISTE"
+                st.write(f"- {existe}: {caminho}")
+            
+            st.write(f"\n**Diretório atual:** {os.getcwd()}")
+            st.write(f"**Caminho do script:** {os.path.dirname(__file__)}")
+        
+        return None
+            
+    except Exception as e:
+        st.error(f"Erro ao carregar credenciais: {str(e)}")
+        return None
+    
+# ============================================================================
+# 4. FUNÇÕES DE SUPORTE
+# ============================================================================
+def carregar_logo():
+    """Carrega logo da empresa - funciona local e na nuvem"""
+    try:
+        # Tenta carregar de vários lugares possíveis
+        caminhos_possiveis = [
+            "./logo-gov-academy.png",          # No repositório Git (funciona na nuvem)
+            "logo-gov-academy.png",            # No diretório atual
+            r"C:\Users\Natalia Bastos\sistema_leads\logo-gov-academy.png"  # Local
+        ]
+        
+        for caminho in caminhos_possiveis:
+            if os.path.exists(caminho):
+                return Image.open(caminho)
+        
+        # Se não encontrar em nenhum lugar
+        st.warning("⚠️ Logo não encontrada")
+        return None
+        
+    except Exception as e:
+        st.error(f"Erro ao carregar logo: {e}")
+        return None
+    
+def logo_to_base64(image):
+    """Converte imagem para base64 - com tratamento de erro"""
+    if image is None:
+        return None  # Retorna None se a imagem for None
+    
+    try:
+        buffered = io.BytesIO()
+        image.save(buffered, format="PNG")
+        return base64.b64encode(buffered.getvalue()).decode()
+    except Exception as e:
+        st.error(f"Erro ao converter logo para base64: {e}")
+        return None
+
+# ============================================================================
+# 5 CSS — ESTRUTURAL 
+# ============================================================================
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+
+/* ===============================
+   REMOVE HEADER
+   =============================== */
+[data-testid="stHeader"] {
+    display: none;
+}
+
+/* ===============================
+   APP BASE
+   =============================== */
+html, body, .stApp {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+}
+
+/* ===============================
+   CONTAINER PRINCIPAL
+   =============================== */
+.block-container {
+    max-width: 1400px !important;
+    width: 100% !important;
+    margin: 0 auto !important;
+    padding: 1rem 2rem !important;
+    box-sizing: border-box !important;
+}
+
+/* ===============================
+   FIX REAL DO st.form
+   =============================== */
+[data-testid="stForm"],
+[data-testid="stForm"] > div,
+[data-testid="stForm"] form {
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
+/* ===============================
+   FIX DAS COLUMNS
+   =============================== */
+[data-testid="column"] {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    flex: 1 1 0% !important;
+}
+
+/* Remove padding interno das colunas (CORTE REAL) */
+[data-testid="column"] > div {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+}
+
+/* Espaçamento controlado entre colunas */
+[data-testid="column"] {
+    padding: 0 0.75rem !important;
+}
+
+/* ===============================
+   CARD
+   =============================== */
+.white-card {
+    width: 100% !important;
+    max-width: 100% !important;
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+    border: 1px solid #e2e8f0;
+    box-sizing: border-box !important;
+}
+
+/* ===============================
+   CONTAINERS DOS CAMPOS
+   =============================== */
+.stTextInput,
+.stNumberInput,
+div[data-baseweb="select"],
+.stDateInput {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    overflow: visible !important;
+}
+
+/* ===============================
+   INPUTS E SELECTS
+   =============================== */
+.stTextInput > div > div > input,
+.stNumberInput > div > div > input,
+div[data-baseweb="select"] > div,
+.stDateInput > div > div > input {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+
+    height: 48px !important;
+    padding: 0 14px !important;
+    box-sizing: border-box !important;
+
+    border: 2px solid #cbd5e1 !important;
+    border-radius: 8px !important;
+    background-color: #ffffff !important;
+    color: #1e293b !important;
+    font-size: 16px !important;
+    font-weight: 500 !important;
+}
+
+/* ===============================
+   FIX BASEWEB SELECT
+   =============================== */
+div[data-baseweb="select"] > div > div {
+    display: flex !important;
+    align-items: center !important;
+    height: 100% !important;
+    padding: 0 !important;
+}
+
+/* ===============================
+   LABELS
+   =============================== */
+label[data-testid="stWidgetLabel"] p {
+    color: #1e293b !important;
+    font-weight: 700 !important;
+    font-size: 14px !important;
+    margin-bottom: 8px !important;
+}
+
+/* ===============================
+   CAMPOS DE DATA ESPECÍFICOS
+   =============================== */
+.stDateInput > div > div > input {
+    background-color: white !important;
+    border: 2px solid #cbd5e1 !important;
+    border-radius: 10px !important;
+    padding: 12px 16px !important;
+    font-size: 16px !important;
+    color: #334155 !important;
+    font-weight: 500 !important;
+    transition: all 0.2s ease !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
+    min-height: 48px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+/* Foco no campo de data */
+.stDateInput > div > div > input:focus {
+    border-color: #522b7b !important;
+    box-shadow: 0 0 0 3px rgba(82, 43, 123, 0.15) !important;
+    outline: none !important;
+}
+
+/* Icone do calendário */
+.stDateInput > div > div > div > button {
+    background-color: transparent !important;
+    border: none !important;
+    color: #64748b !important;
+}
+
+/* Calendário dropdown */
+div[data-baseweb="calendar"] {
+    background-color: white !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 10px !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Dias do calendário */
+div[data-baseweb="calendar"] button {
+    color: #334155 !important;
+    font-weight: 500 !important;
+}
+
+/* Dia selecionado */
+div[data-baseweb="calendar"] button[aria-selected="true"] {
+    background-color: #522b7b !important;
+    color: white !important;
+    font-weight: 600 !important;
+}
+
+/* Hoje no calendário */
+div[data-baseweb="calendar"] button[data-testid="today"] {
+    border: 2px solid #522b7b !important;
+    color: #522b7b !important;
+}
+            
+.stButton > button {
+    transition: all 0.3s ease !important;
+}
+
+.stButton > button {
+    transition: all 0.3s ease !important;
+}
+
+/* Botão secundário */
+button[kind="secondary"] {
+    border: 1px solid #e2e8f0 !important;
+}
+
+/* Botão secundário - hover (agora em roxo) */
+button[kind="secondary"]:hover {
+    background-color: rgba(82, 43, 123, 0.05) !important;
+    border-color: #8b5cf6 !important;
+    color: #8b5cf6 !important;
+}
+
+/* Botão secundário - active (também em roxo) */
+button[kind="secondary"]:active {
+    background-color: rgba(82, 43, 123, 0.1) !important;
+    border-color: #522b7b !important;
+    color: #522b7b !important;
+}
+            
+</style>
+""", unsafe_allow_html=True)
+
+# ============================================================================
+# 6. CSS — CORES / TEMA
+# ============================================================================
+st.markdown(f"""
+<style>
+.stApp {{
+    background-color: {BG_COLOR} !important;
+    font-family: 'Inter', sans-serif;
+}}
+
+.stTextInput input:focus,
+.stNumberInput input:focus,
+div[data-baseweb="select"]:focus-within,
+.stDateInput > div > div > input:focus {{
+    border-color: {PRIMARY_COLOR} !important;
+    box-shadow: 0 0 0 3px rgba(82, 43, 123, 0.12) !important;
+    outline: none !important;
+}}
+
+.gov-purple-btn button {{
+    width: 100% !important;
+    background: linear-gradient(135deg, {PRIMARY_COLOR} 0%, #7e3ca8 100%) !important;
+    color: white !important;
+    border-radius: 50px !important;
+    padding: 12px !important;
+    font-weight: 700 !important;
+    border: none !important;
+    margin-top: 15px !important;
+}}
+</style>
+""", unsafe_allow_html=True)
+
+
+# ============================================================================
+# 7. FUNÇÕES DE INTERFACE
+# ============================================================================
+def render_metric_card(label, value, delta=None):
+    """Renderiza um card de métrica"""
+    st.markdown(f"""
+    <div class="white-card" style="text-align: center; padding: 15px;">
+        <div style="color: #64748b; font-size: 0.9rem; font-weight: 600; text-transform: uppercase;">{label}</div>
+        <div style="font-size: 1.8rem; font-weight: 800; color: {PRIMARY_COLOR}; margin: 5px 0;">{value}</div>
+        {f'<div style="color: #10b981; font-size: 0.85rem; font-weight: 600;">↑ {delta}</div>' if delta else '<div style="height: 20px;"></div>'}
+    </div>
+    """, unsafe_allow_html=True)
+
+def render_header_menu():
+    """Renderiza o menu superior da aplicação"""
+    st.markdown('<div style="background-color: white; padding: 15px 0; border-bottom: 1px solid #e2e8f0; margin-bottom: 25px;">', unsafe_allow_html=True)
+    
+    col_logo, col_nav = st.columns([3, 12])
+    
+    # Logo
+    with col_logo:
+        logo_local = carregar_logo()
+        if logo_local:
+            logo_base64 = logo_to_base64(logo_local)
+            st.markdown(f'<img src="data:image/png;base64,{logo_base64}" style="height: {LOGO_HEIGHT}px; width: auto; margin-left: 15px;">', unsafe_allow_html=True)
+    
+    # Menu de Navegação
+    with col_nav:
+        st.markdown('<div style="height: 20px;"></div>', unsafe_allow_html=True)
+        menu_items = [
+            ("📊 Dashboard", "Dashboard"),
+            ("📝 Cadastrar", "Cadastrar"),
+            ("👥 Leads", "Leads"),
+            ("📈 Relatórios", "Relatórios"),
+            ("⚙️ Configurações", "Configurações")
+        ]
+        
+        cols = st.columns(len(menu_items))
+        for i, (label, key) in enumerate(menu_items):
+            is_active = st.session_state.menu_atual == key
+            with cols[i]:
+                if is_active: st.markdown('<div class="active-btn">', unsafe_allow_html=True)
+                if st.button(label, key=f"nav_main_{key}", use_container_width=True):
+                    st.session_state.menu_atual = key
+                    st.rerun()
+                if is_active: st.markdown('</div>', unsafe_allow_html=True)
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# ============================================================================
+# 8. FUNÇÕES DE DADOS
+# ============================================================================
+def get_valores_padrao():
+    """Retorna valores padrão para dropdowns"""
+    return {
+        'origens': ['Google Ads', 'Instagram', 'LinkedIn', 'Indicação', 'Site/Blog', 'Evento/Palestrante', 'Email Marketing', 'Outro'],
+        'status': ['Novo', 'Contatado', 'Qualificado', 'Proposta_Enviada', 'Negociação', 'Convertido', 'Perdido'],
+        'classificacoes': ['Quente', 'Morno', 'Frio'],
+        'estados': ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 
+                   'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'],
+        'cargos': ['CEO/Diretor', 'Gerente', 'Coordenador', 'Supervisor', 'Analista', 
+                  'Assistente', 'Estagiário', 'Autônomo'],
+        'interesses': ['Curso Básico', 'Curso Avançado', 'Mentoria', 'Consultoria', 
+                      'Certificação', 'Workshop', 'Material Didático', 'Outro'],
+        'produtos': ['Curso Básico', 'Curso Avançado', 'Mentoria', 'Consultoria'],
+        'canais': ['Email', 'Telefone', 'WhatsApp', 'Presencial'],
+        'tipos_cliente': ['Prefeitura', 'Câmara', 'Consórcio', 'Judiciário', 
+                         'Tribunal de Contas', 'Ministério Público', 'Defensoria Pública', 'Estatais'],
+        'tags': ['Prioridade Alta', 'Recontatar', 'Cliente Potencial', 'Seguir-up', 'Promoção'],
+        'equipe': [],  # Será preenchido da planilha
+        'cidades': {}
+    }
+
+def carregar_cidades_por_estado():
+    """Carrega cidades organizadas por estado"""
+    cidades_por_estado = {}
+    
+    try:
+        creds = get_credentials()
+        client = gspread.authorize(creds)
+        planilha = client.open_by_key(SPREADSHEET_ID)
+        worksheet = planilha.worksheet('cidades_por_estado')
+        
+        dados = worksheet.get_all_values()
+        if not dados or len(dados) <= 1:
+            return {}
+
+        df = pd.DataFrame(dados[1:], columns=dados[0])
+        
+        # Padronização de colunas
+        df.columns = [col.strip() for col in df.columns]
+        
+        # Identificar colunas automaticamente
+        col_uf = None
+        col_mun = None
+        
+        for col in df.columns:
+            col_lower = col.lower()
+            if 'uf' in col_lower:
+                col_uf = col
+                break
+        
+        for col in df.columns:
+            col_lower = col.lower()
+            if 'município' in col_lower or 'cidade' in col_lower:
+                col_mun = col
+                break
+        
+        # Fallback para colunas padrão
+        if not col_uf and len(df.columns) > 0:
+            col_uf = df.columns[0]
+        if not col_mun and len(df.columns) > 1:
+            col_mun = df.columns[1]
+        elif not col_mun and len(df.columns) > 0:
+            col_mun = df.columns[0]
+        
+        if not col_uf or not col_mun:
+            return {}
+        
+        # Limpeza dos dados
+        df[col_uf] = df[col_uf].astype(str).str.strip().str.upper()
+        df[col_mun] = df[col_mun].astype(str).str.strip()
+        
+        # Remover linhas vazias
+        df = df[df[col_uf].notna() & (df[col_uf] != '')]
+        df = df[df[col_mun].notna() & (df[col_mun] != '')]
+        
+        # Agrupar no dicionário
+        for estado in df[col_uf].unique():
+            estado = str(estado).strip().upper()
+            if not estado or len(estado) != 2:
+                continue
+                
+            municipios = df[df[col_uf] == estado][col_mun].dropna().unique().tolist()
+            municipios_filtrados = []
+            for m in municipios:
+                m_str = str(m).strip()
+                if m_str and m_str.lower() != 'nan' and m_str != '':
+                    municipios_filtrados.append(m_str)
+            
+            if municipios_filtrados:
+                cidades_por_estado[estado] = sorted(municipios_filtrados)
+        
+        return cidades_por_estado
+
+    except Exception:
+        return {}
+
+def carregar_opcoes_dropdown():
+    """Carrega opções para dropdowns"""
+    opcoes = get_valores_padrao()
+    
+    try:
+        # Carregar configurações
+        creds = get_credentials()
+        client = gspread.authorize(creds)
+        planilha = client.open_by_key(SPREADSHEET_ID)
+        
+        # Configurações
+        worksheet = planilha.worksheet('configuracoes')
+        dados = worksheet.get_all_values()
+        
+        if dados and len(dados) > 1:
+            df_config = pd.DataFrame(dados[1:], columns=dados[0])
+
+            # Mapeamento de colunas
+            mapeamento = {
+                'origens': 'Origens', 'status': 'Status', 'classificacoes': 'Classificacoes',
+                'estados': 'Estados', 'cargos': 'Cargos_Comuns', 'interesses': 'Interesses',
+                'produtos': 'Produto', 'canais': 'Canais_Preferidos', 'tipos_cliente': 'Tipos_Cliente',
+                'tags': 'Tags'  # Nova coluna para tags
+            }
+
+            for chave, coluna in mapeamento.items():
+                if coluna in df_config.columns:
+                    opcoes[chave] = [str(x).strip() for x in df_config[coluna].dropna().tolist() if str(x).strip()]
+
+        # Carregar equipe da aba 'equipe'
+        try:
+            worksheet_equipe = planilha.worksheet('equipe')
+            dados_equipe = worksheet_equipe.get_all_values()
+            if dados_equipe and len(dados_equipe) > 1:
+                # Assume que a primeira coluna tem os nomes
+                df_equipe = pd.DataFrame(dados_equipe[1:], columns=dados_equipe[0])
+                # Pega os nomes da primeira coluna disponível
+                primeira_coluna = df_equipe.columns[0]
+                opcoes['equipe'] = [str(x).strip() for x in df_equipe[primeira_coluna].dropna().tolist() if str(x).strip()]
+            else:
+                opcoes['equipe'] = []
+        except Exception:
+            opcoes['equipe'] = []
+
+        # Carregar cidades
+        if not st.session_state.opcoes.get('cidades'):
+            cidades_carregadas = carregar_cidades_por_estado()
+            st.session_state.opcoes['cidades'] = cidades_carregadas
+        
+        opcoes['cidades'] = st.session_state.opcoes['cidades']
+        
+        return opcoes
+
+    except Exception:
+        # Em caso de erro, usar valores padrão
+        cidades_carregadas = carregar_cidades_por_estado()
+        st.session_state.opcoes['cidades'] = cidades_carregadas
+        opcoes['cidades'] = cidades_carregadas
+        opcoes['equipe'] = []  # Valor padrão para equipe
+        opcoes['tags'] = []    # Valor padrão para tags
+        return opcoes
+
+def salvar_lead_no_google_sheets(novo_lead):
+    """Salva um novo lead no Google Sheets"""
+    try:
+        creds = get_credentials()
+        client = gspread.authorize(creds)
+        planilha = client.open_by_key(SPREADSHEET_ID)
+        worksheet = planilha.worksheet('leads')
+        
+        # Obter cabeçalhos
+        cabecalhos = worksheet.row_values(1)
+        
+        # Se não houver coluna ID, adicionar
+        if 'ID' not in cabecalhos:
+            cabecalhos.insert(0, 'ID')
+            worksheet.insert_row(cabecalhos, 1)
+            # Recarregar cabeçalhos
+            cabecalhos = worksheet.row_values(1)
+        
+        # Garantir que o lead tenha ID
+        if 'ID' not in novo_lead:
+            # Gerar ID automático
+            from datetime import datetime
+            lead_id = f"L{datetime.now().strftime('%Y%m%d%H%M%S')}"
+            novo_lead['ID'] = lead_id
+        
+        # Preparar dados na ordem dos cabeçalhos
+        dados_para_salvar = []
+        for cabecalho in cabecalhos:
+            if cabecalho in novo_lead:
+                dados_para_salvar.append(novo_lead[cabecalho])
+            else:
+                dados_para_salvar.append('')
+        
+        # Adicionar nova linha
+        worksheet.append_row(dados_para_salvar)
+        return True
+        
+    except Exception as e:
+        st.error(f"Erro ao salvar: {e}")
+        return False
+    
+# ============================================================================
+# 9. FUNÇÕES PARA EDITAR E EXCLUIR LEADS
+# ============================================================================
+
+def deletar_lead_do_google_sheets(lead_id):
+    """Deleta um lead do Google Sheets pelo ID"""
+    try:
+        creds = get_credentials()
+        client = gspread.authorize(creds)
+        planilha = client.open_by_key(SPREADSHEET_ID)
+        worksheet = planilha.worksheet('leads')
+        
+        # Buscar todas as linhas
+        dados = worksheet.get_all_values()
+        if not dados or len(dados) <= 1:
+            return False
+        
+        # Encontrar a linha com o ID
+        cabecalhos = dados[0]
+        try:
+            coluna_id_index = cabecalhos.index('ID')
+        except ValueError:
+            # Tentar encontrar por outras colunas de ID
+            for i, cabecalho in enumerate(cabecalhos):
+                if 'id' in cabecalho.lower():
+                    coluna_id_index = i
+                    break
+            else:
+                return False
+        
+        # Procurar pelo lead_id
+        linha_para_excluir = None
+        for i, linha in enumerate(dados[1:], start=2):  # start=2 porque a primeira linha é cabeçalho
+            if i-1 < len(dados) and coluna_id_index < len(linha):
+                if linha[coluna_id_index] == str(lead_id):
+                    linha_para_excluir = i
+                    break
+        
+        if linha_para_excluir:
+            worksheet.delete_rows(linha_para_excluir)
+            
+            # LIMPAR O CACHE DOS LEADS
+            st.cache_data.clear()  # Limpa todo o cache de dados
+            
+            return True
+        return False
+        
+    except Exception as e:
+        st.error(f"Erro ao deletar lead: {e}")
+        return False
+
+def atualizar_lead_no_google_sheets(lead_id, dados_atualizados):
+    """Atualiza um lead existente no Google Sheets"""
+    try:
+        creds = get_credentials()
+        client = gspread.authorize(creds)
+        planilha = client.open_by_key(SPREADSHEET_ID)
+        worksheet = planilha.worksheet('leads')
+        
+        # Buscar todas as linhas
+        dados = worksheet.get_all_values()
+        if not dados or len(dados) <= 1:
+            return False
+        
+        cabecalhos = dados[0]
+        
+        # Encontrar a linha com o ID
+        try:
+            coluna_id_index = cabecalhos.index('ID')
+        except ValueError:
+            for i, cabecalho in enumerate(cabecalhos):
+                if 'id' in cabecalho.lower():
+                    coluna_id_index = i
+                    break
+            else:
+                return False
+        
+        # Procurar pelo lead_id
+        linha_para_atualizar = None
+        for i, linha in enumerate(dados[1:], start=2):
+            if i-1 < len(dados) and coluna_id_index < len(linha):
+                if linha[coluna_id_index] == str(lead_id):
+                    linha_para_atualizar = i
+                    break
+        
+        if linha_para_atualizar:
+            # Preparar dados na ordem dos cabeçalhos
+            dados_atualizados_ordenados = []
+            for cabecalho in cabecalhos:
+                if cabecalho in dados_atualizados:
+                    dados_atualizados_ordenados.append(dados_atualizados[cabecalho])
+                else:
+                    dados_atualizados_ordenados.append('')
+            
+            # Atualizar a linha
+            worksheet.update(f'A{linha_para_atualizar}', [dados_atualizados_ordenados])
+            
+            # LIMPAR O CACHE DOS LEADS
+            st.cache_data.clear()  # Limpa todo o cache de dados
+            # ou especificamente: load_leads.clear() se quiser apenas essa função
+            
+            return True
+        return False
+        
+    except Exception as e:
+        st.error(f"Erro ao atualizar lead: {e}")
+        return False
+    
+
+# ============================================================================
+# 10. FUNÇÕES PARA CARREGAR DADOS
+# ============================================================================
+def limpar_numeros(texto):
+    """Remove tudo que não é número"""
+    if not texto:
+        return ''
+    return ''.join(filter(str.isdigit, str(texto)))
+
+@st.cache_data(ttl=60)
+def load_leads():
+    """Carrega dados de leads da planilha Google Sheets"""
+    try:
+        creds = get_credentials()
+        
+        if creds is None:
+            st.error("❌ Credenciais não disponíveis. Não é possível carregar leads.")
+            return pd.DataFrame()  # Retorna DataFrame vazio
+        
+        client = gspread.authorize(creds)
+        planilha = client.open_by_key(SPREADSHEET_ID)
+        worksheet = planilha.worksheet('leads')
+        
+        dados = worksheet.get_all_values()
+        
+        if not dados or len(dados) <= 1:
+            st.info("📭 Nenhum lead cadastrado ainda.")
+            return pd.DataFrame()
+        
+        df = pd.DataFrame(dados[1:], columns=dados[0])
+        
+        if 'ID' not in df.columns:
+            df['ID'] = ''
+        
+        return df
+        
+    except gspread.exceptions.APIError as e:
+        st.error(f"❌ Erro na API do Google Sheets: {e}")
+        return pd.DataFrame()
+    except Exception as e:
+        st.error(f"❌ Erro ao carregar leads: {e}")
+        return pd.DataFrame()
+    
+   
+# ============================================================================
+# 11. APLICAÇÃO PRINCIPAL
+# ============================================================================
+def main():
+    # Carregar opções
+    opcoes = carregar_opcoes_dropdown()
+    
+    # Renderizar menu
+    render_header_menu()
+    
+    # Conteúdo baseado no menu selecionado
+    menu = st.session_state.menu_atual
+    
+    if menu == "Dashboard":
+        # Dashboard
+        df_leads = load_leads()
+        
+        if not df_leads.empty:
+            # ==================== CÁLCULOS DAS MÉTRICAS ====================
+            total = len(df_leads)
+            novos = len(df_leads[df_leads['Status'] == 'Novo']) if 'Status' in df_leads.columns else 0
+            
+            # Calcular conversão real (Convertidos / Total)
+            convertidos = len(df_leads[df_leads['Status'] == 'Convertido']) if 'Status' in df_leads.columns else 0
+            taxa_conversao = (convertidos / total * 100) if total > 0 else 0
+            
+            # Valor total estimado - CORRIGIDO
+            if 'Valor_Estimado' in df_leads.columns:
+                try:
+                    # Converter para numérico, tratando erros como NaN
+                    valores_numericos = pd.to_numeric(df_leads['Valor_Estimado'], errors='coerce')
+                    # Substituir NaN por 0 e somar
+                    valor_total = valores_numericos.fillna(0).sum()
+                except Exception as e:
+                    valor_total = 0
+            else:
+                valor_total = 0
+            
+            # Leads por mês (últimos 6 meses)
+            if 'Data_Cadastro' in df_leads.columns:
+                try:
+                    df_leads['Data_Cadastro'] = pd.to_datetime(df_leads['Data_Cadastro'])
+                    leads_por_mes = df_leads.groupby(df_leads['Data_Cadastro'].dt.to_period('M')).size()
+                    leads_ultimo_mes = leads_por_mes.iloc[-1] if len(leads_por_mes) > 0 else 0
+                    crescimento = "+10%"  # Simulado por enquanto
+                except:
+                    leads_ultimo_mes = 0
+                    crescimento = "N/A"
+            else:
+                leads_ultimo_mes = 0
+                crescimento = "N/A"
+            
+            # ==================== LAYOUT DO DASHBOARD ====================
+            st.markdown("""
+            <style>
+            .dashboard-header {
+                color: #1e293b;
+                font-size: 28px;
+                font-weight: 800;
+                margin-bottom: 10px;
+            }
+            .dashboard-subtitle {
+                color: #64748b;
+                font-size: 14px;
+                margin-bottom: 30px;
+            }
+            .metric-card {
+                background: white;
+                border-radius: 12px;
+                padding: 20px;
+                margin-bottom: 20px;
+                border: 1px solid #e2e8f0;
+                transition: transform 0.2s ease;
+                height: 100%;
+            }
+            .metric-card:hover {
+                transform: translateY(-3px);
+                box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+            }
+            .metric-value {
+                font-size: 2.2rem;
+                font-weight: 800;
+                color: #522b7b;
+                margin: 10px 0;
+            }
+            .metric-label {
+                color: #64748b;
+                font-size: 0.9rem;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+            .metric-delta {
+                font-size: 0.85rem;
+                font-weight: 600;
+                margin-top: 5px;
+            }
+            .metric-delta.positive {
+                color: #10b981;
+            }
+            .metric-delta.negative {
+                color: #ef4444;
+            }
+            .section-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                margin: 30px 0 20px 0;
+                padding-bottom: 0;  /* Removido padding inferior */
+                border-bottom: none;  /* REMOVIDA A LINHA - border-bottom: none */
+            }
+            .section-title {
+                font-size: 1.4rem;
+                font-weight: 700;
+                color: #1e293b;
+            }
+            .chart-container {
+                background: white;
+                border-radius: 12px;
+                padding: 20px;
+                margin-bottom: 20px;
+                border: none !important; /* Força a remoção de qualquer borda */
+                box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); /* Opcional: sombra leve em vez de borda */
+            }
+            .status-badge {
+                display: inline-block;
+                padding: 4px 12px;
+                border-radius: 20px;
+                font-size: 0.85rem;
+                font-weight: 600;
+                margin: 2px 4px;
+            }
+                        
+            /* Remover bordas dos gráficos Plotly */
+            .js-plotly-plot .plotly .modebar {
+                display: none;
+            }
+            .js-plotly-plot .plotly .main-svg {
+                border: none !important;
+            }
+            .js-plotly-plot .plotly .gridlayer path {
+                stroke: none !important;
+            }
+            .js-plotly-plot .plotly .xaxis path,
+            .js-plotly-plot .plotly .yaxis path {
+                stroke: none !important;
+            }
+            .js-plotly-plot .plotly .xaxis line,
+            .js-plotly-plot .plotly .yaxis line {
+                stroke: none !important;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+
+            # Cabeçalho
+            st.markdown('<div class="dashboard-header">📊 Dashboard de Performance</div>', unsafe_allow_html=True)
+            
+            # ==================== METRICAS PRINCIPAIS ====================
+            st.markdown('<h3 style="color: #1e293b; font-size: 1.4rem; font-weight: 700; margin: 0 0 20px 0;">Métricas Principais</h3>', unsafe_allow_html=True)
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-label">Total de Leads</div>
+                    <div class="metric-value">{total}</div>
+                    <div class="metric-delta {'positive' if novos > 0 else ''}">
+                        ↑ {novos} novos este mês
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col2:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-label">Taxa de Conversão</div>
+                    <div class="metric-value">{taxa_conversao:.1f}%</div>
+                    <div class="metric-delta">
+                        {convertidos} leads convertidos
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col3:
+                # Formatar valor_total de forma segura
+                try:
+                    # Tentar converter para float primeiro
+                    valor_num = float(valor_total)
+                    valor_formatado = f"R$ {valor_num:,.0f}"
+                except (ValueError, TypeError):
+                    # Se não conseguir converter, mostrar sem formatação
+                    valor_formatado = f"R$ {valor_total}"
+                
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-label">Valor Estimado</div>
+                    <div class="metric-value">{valor_formatado}</div>
+                    <div class="metric-delta">
+                        Potencial de receita
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col4:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-label">Leads Último Mês</div>
+                    <div class="metric-value">{leads_ultimo_mes}</div>
+                    <div class="metric-delta {'positive' if crescimento.startswith('+') else 'negative'}">
+                        {crescimento} vs mês anterior
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            # ==================== GRÁFICOS ====================
+            
+            col_chart1, col_chart2 = st.columns(2)
+            
+            with col_chart1:
+                # Gráfico de Status
+                st.markdown('<h3 style="color: #1e293b; font-size: 1.4rem; font-weight: 700; margin: 30px 0 20px 0;">Análise Visual</h3>', unsafe_allow_html=True)
+            
+            col_chart1, col_chart2 = st.columns(2)
+            
+            with col_chart1:
+                # Removemos o h3 de dentro da div para eliminar a barra branca
+                st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+                st.markdown('<p style="color: #1e293b; font-size: 1.1rem; font-weight: 700; margin-bottom: 10px;">📈 Distribuição por Status</p>', unsafe_allow_html=True)
+                
+                if 'Status' in df_leads.columns:
+                    status_counts = df_leads['Status'].value_counts()
+                    fig_status = px.pie(
+                        names=status_counts.index, 
+                        values=status_counts.values,
+                        color_discrete_sequence=['#522b7b', '#8b5cf6', '#6366f1', '#10b981', '#f59e0b', '#ef4444']
+                    )
+                    # O SEGREDO: t=0 remove o espaço branco no topo do gráfico
+                    fig_status.update_layout(
+                        margin=dict(t=0, b=0, l=0, r=0),
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        showlegend=True,
+                        legend=dict(orientation="h", yanchor="bottom", y=-0.2)
+                    )
+                    st.plotly_chart(fig_status, use_container_width=True, config={'displayModeBar': False})
+                st.markdown('</div>', unsafe_allow_html=True)
+            
+            with col_chart2:
+                st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+                st.markdown('<p style="color: #1e293b; font-size: 1.1rem; font-weight: 700; margin-bottom: 10px;">🎯 Origem dos Leads</p>', unsafe_allow_html=True)
+                
+                if 'Origem_Lead' in df_leads.columns:
+                    origem_counts = df_leads['Origem_Lead'].value_counts().head(8)
+                    fig_origem = px.bar(
+                        x=origem_counts.values,
+                        y=origem_counts.index,
+                        orientation='h',
+                        color_discrete_sequence=['#8b5cf6']
+                    )
+                    # ZERANDO MARGENS PARA ELIMINAR ESPAÇOS BRANCOS
+                    fig_origem.update_layout(
+                        margin=dict(t=0, b=0, l=10, r=10),
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        xaxis=dict(showgrid=False, zeroline=False, showline=False),
+                        yaxis=dict(showgrid=False, zeroline=False, showline=False),
+                        height=300
+                    )
+                    st.plotly_chart(fig_origem, use_container_width=True, config={'displayModeBar': False})
+                st.markdown('</div>', unsafe_allow_html=True)
+            
+            # ==================== MÉTRICAS SECUNDÁRIAS ====================
+            st.markdown('<h3 style="color: #1e293b; font-size: 1.4rem; font-weight: 700; margin: 30px 0 20px 0;">📊 Insights Adicionais</h3>', unsafe_allow_html=True)
+            
+            col_insight1, col_insight2, col_insight3 = st.columns(3)
+            
+            with col_insight1:
+                st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+                st.markdown('<h3 style="color: #1e293b; font-size: 1rem; margin-bottom: 15px;">🏙️ Top Cidades</h3>', unsafe_allow_html=True)
+                
+                if 'Cidade' in df_leads.columns:
+                    top_cidades = df_leads['Cidade'].value_counts().head(5)
+                    for cidade, count in top_cidades.items():
+                        porcentagem = (count / total * 100) if total > 0 else 0
+                        st.markdown(f"""
+                        <div style="margin-bottom: 10px;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                <span style="font-weight: 500; color: #475569;">{cidade}</span>
+                                <span style="font-weight: 600; color: #522b7b;">{count}</span>
+                            </div>
+                            <div style="background-color: #f1f5f9; height: 8px; border-radius: 4px;">
+                                <div style="background-color: #8b5cf6; width: {porcentagem}%; height: 100%; border-radius: 4px;"></div>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.info("Sem dados de cidades")
+                
+                st.markdown('</div>', unsafe_allow_html=True)
+            
+            with col_insight2:
+                st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+                st.markdown('<h3 style="color: #1e293b; font-size: 1rem; margin-bottom: 15px;">🏢 Top Empresas</h3>', unsafe_allow_html=True)
+                
+                if 'Empresa_Atual' in df_leads.columns:
+                    top_empresas = df_leads['Empresa_Atual'].value_counts().head(5)
+                    for empresa, count in top_empresas.items():
+                        porcentagem = (count / total * 100) if total > 0 else 0
+                        st.markdown(f"""
+                        <div style="margin-bottom: 10px;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                <span style="font-weight: 500; color: #475569; max-width: 70%; overflow: hidden; text-overflow: ellipsis;">{empresa}</span>
+                                <span style="font-weight: 600; color: #522b7b;">{count}</span>
+                            </div>
+                            <div style="background-color: #f1f5f9; height: 8px; border-radius: 4px;">
+                                <div style="background-color: #10b981; width: {porcentagem}%; height: 100%; border-radius: 4px;"></div>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.info("Sem dados de empresas")
+                
+                st.markdown('</div>', unsafe_allow_html=True)
+            
+            with col_insight3:
+                st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+                st.markdown('<h3 style="color: #1e293b; font-size: 1rem; margin-bottom: 15px;">🏛️ Top Tipo de Cliente</h3>', unsafe_allow_html=True)
+                
+                if 'Tipo_Cliente' in df_leads.columns:
+                    # Substituir valores vazios/NaN por "Não Informado"
+                    df_leads_filtrado = df_leads.copy()
+                    df_leads_filtrado['Tipo_Cliente'] = df_leads_filtrado['Tipo_Cliente'].fillna('Não Informado')
+                    df_leads_filtrado['Tipo_Cliente'] = df_leads_filtrado['Tipo_Cliente'].replace('', 'Não Informado')
+                    
+                    tipo_cliente_counts = df_leads_filtrado['Tipo_Cliente'].value_counts().head(5)
+                    colors = ['#ef4444', '#f59e0b', '#3b82f6', '#10b981', '#8b5cf6']
+                    
+                    for i, (tipo_cliente, count) in enumerate(tipo_cliente_counts.items()):
+                        color = colors[i] if i < len(colors) else '#94a3b8'
+                        porcentagem = (count / total * 100) if total > 0 else 0
+                        
+                        st.markdown(f"""
+                        <div style="margin-bottom: 15px;">
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
+                                <span style="display: flex; align-items: center;">
+                                    <div style="width: 12px; height: 12px; border-radius: 50%; background-color: {color}; margin-right: 10px;"></div>
+                                    <span style="font-weight: 600; color: #475569;">{tipo_cliente}</span>
+                                </span>
+                                <span style="font-weight: 700; color: #1e293b;">{porcentagem:.0f}%</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; font-size: 0.85rem; color: #64748b;">
+                                <span>{count} leads</span>
+                                <span>{porcentagem:.1f}% do total</span>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.info("Sem dados de tipo de cliente")
+                
+                st.markdown('</div>', unsafe_allow_html=True)
+        
+        else:
+            # Caso não haja dados
+            st.markdown('<div class="white-card" style="padding: 60px 20px; text-align: center;">', unsafe_allow_html=True)
+            st.markdown('<div style="font-size: 48px; margin-bottom: 20px; color: #cbd5e1;">📊</div>', unsafe_allow_html=True)
+            st.markdown('<h3 style="color: #475569; font-size: 20px; margin-bottom: 10px;">Dashboard Vazio</h3>', unsafe_allow_html=True)
+            st.markdown('<p style="color: #64748b; font-size: 14px; max-width: 500px; margin: 0 auto 30px auto;">Comece a cadastrar leads para visualizar métricas e insights de performance.</p>', unsafe_allow_html=True)
+            
+            col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
+            with col_btn2:
+                if st.button("➕ Cadastrar Primeiro Lead", type="primary", use_container_width=True):
+                    st.session_state.menu_atual = "Cadastrar"
+                    st.rerun()
+            
+            st.markdown('</div>', unsafe_allow_html=True)
+
+    elif menu == "Leads":
+        # Lista de Leads
+        df_leads = load_leads()
+        
+        # Inicializar session states para edição
+        if 'editing_lead' not in st.session_state:
+            st.session_state.editing_lead = None
+        if 'delete_confirm' not in st.session_state:
+            st.session_state.delete_confirm = None
+        
+        if not df_leads.empty:
+            # Métricas
+            total_leads = len(df_leads)
+            m1, m2, m3, m4 = st.columns(4)
+            
+            with m1: render_metric_card("TOTAL DE LEADS", f"{total_leads}")
+            with m2: render_metric_card("CARGO MAIS COMUM", 
+                df_leads['Cargo_Funcao'].value_counts().index[0] if 'Cargo_Funcao' in df_leads.columns else "N/A")
+            with m3: render_metric_card("EMPRESA PRINCIPAL",
+                df_leads['Empresa_Atual'].value_counts().index[0] if 'Empresa_Atual' in df_leads.columns else "N/A")
+            with m4: render_metric_card("CIDADE LÍDER",
+                df_leads['Cidade'].value_counts().index[0] if 'Cidade' in df_leads.columns else "N/A")
+            
+            # Busca
+            st.markdown('<div style="margin-top: 40px;"></div>', unsafe_allow_html=True)
+            st.markdown("""
+            <div style="margin-bottom: 10px; font-size: 18px; font-weight: 600; color: #1e293b;">
+                🔍 Buscar em todos os campos
+            </div>
+            """, unsafe_allow_html=True)
+            
+            search_col, btn1_col, btn2_col = st.columns([6, 2, 2])
+            
+            with search_col:
+                search_term = st.text_input(
+                    "",
+                    value=st.session_state.search_term,
+                    placeholder="Digite para buscar...",
+                    key="lead_search_input",
+                    label_visibility="collapsed"
+                )
+                
+                if search_term != st.session_state.search_term:
+                    st.session_state.search_term = search_term
+            
+            with btn1_col:
+                if st.button("🔍 Buscar", type="primary", use_container_width=True):
+                    pass
+            
+            with btn2_col:
+                if st.button("🗑️ Limpar", use_container_width=True):
+                    st.session_state.search_term = ""
+                    st.rerun()
+            
+            # Aplicar filtro
+            st.markdown('<div style="margin-top: 25px;"></div>', unsafe_allow_html=True)
+            
+            if st.session_state.search_term:
+                search_term_lower = st.session_state.search_term.strip().lower()
+                mask = pd.Series([False] * len(df_leads))
+                
+                for col in df_leads.columns:
+                    if df_leads[col].dtype == 'object':
+                        mask = mask | df_leads[col].astype(str).str.lower().str.contains(search_term_lower, na=False)
+                
+                filtered_df = df_leads[mask]
+                results_count = len(filtered_df)
+            else:
+                filtered_df = df_leads
+                results_count = len(filtered_df)
+            
+            if results_count > 0:
+                st.success(f"🔍 **{results_count} leads encontrados**")
+                
+                # Se estiver editando um lead, mostrar formulário de edição COMPLETO
+                if st.session_state.editing_lead:
+                    st.markdown('<div class="white-card">', unsafe_allow_html=True)
+                    st.subheader("✏️ Editando Lead")
+                    
+                    lead_para_editar = df_leads[df_leads['ID'] == st.session_state.editing_lead]
+                    if not lead_para_editar.empty:
+                        lead_para_editar = lead_para_editar.iloc[0]
+                        
+                        with st.form("editar_lead_completo"):
+                            # Seção 1: Dados Pessoais
+                            st.markdown("""
+                            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 30px; padding-bottom: 15px; border-bottom: 2px solid #f1f5f9;">
+                                <div style="background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); color: white; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px;">👤</div>
+                                <h3 style="color: #1e293b; font-size: 20px; font-weight: 700; margin: 0;">Informações Pessoais</h3>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                            col1, col2 = st.columns(2)
+                            
+                            with col1:
+                                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Nome Completo *</div>', unsafe_allow_html=True)
+                                nome_edit = st.text_input("", 
+                                    value=lead_para_editar.get('Nome', ''),
+                                    placeholder="Digite o nome completo",
+                                    label_visibility="collapsed", 
+                                    key="nome_edit_completo")
+                            
+                            with col2:
+                                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">E-mail *</div>', unsafe_allow_html=True)
+                                email_edit = st.text_input("", 
+                                    value=lead_para_editar.get('Email', ''),
+                                    placeholder="exemplo@empresa.com",
+                                    label_visibility="collapsed", 
+                                    key="email_edit_completo")
+                            
+                            col3, col4 = st.columns(2)
+                            
+                            with col3:
+                                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">CPF</div>', unsafe_allow_html=True)
+                                cpf_edit = st.text_input("", 
+                                    value=lead_para_editar.get('CPF', ''),
+                                    placeholder="000.000.000-00",
+                                    label_visibility="collapsed", 
+                                    key="cpf_edit_completo")
+                            
+                            with col4:
+                                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Telefone/WhatsApp</div>', unsafe_allow_html=True)
+                                telefone_edit = st.text_input("", 
+                                    value=lead_para_editar.get('Telefone', ''),
+                                    placeholder="(00) 00000-0000",
+                                    label_visibility="collapsed", 
+                                    key="telefone_edit_completo")
+                            
+                            # Seção 2: Dados Profissionais
+                            st.markdown("""
+                            <div style="display: flex; align-items: center; gap: 12px; margin: 40px 0 30px 0; padding-bottom: 15px; border-bottom: 2px solid #f1f5f9;">
+                                <div style="background: linear-gradient(135deg, #10b981 0%, #34d399 100%); color: white; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px;">💼</div>
+                                <h3 style="color: #1e293b; font-size: 20px; font-weight: 700; margin: 0;">Dados Profissionais</h3>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                            col5, col6 = st.columns(2)
+                            
+                            with col5:
+                                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Cargo/Função</div>', unsafe_allow_html=True)
+                                cargo_edit = st.selectbox("", 
+                                    options=[""] + opcoes['cargos'],
+                                    index=opcoes['cargos'].index(lead_para_editar.get('Cargo_Funcao', '')) + 1 if lead_para_editar.get('Cargo_Funcao', '') in opcoes['cargos'] else 0,
+                                    label_visibility="collapsed", 
+                                    key="cargo_edit_completo")
+                            
+                            with col6:
+                                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Empresa/Organização</div>', unsafe_allow_html=True)
+                                empresa_edit = st.text_input("", 
+                                    value=lead_para_editar.get('Empresa_Atual', ''),
+                                    placeholder="Ex: Prefeitura Municipal",
+                                    label_visibility="collapsed", 
+                                    key="empresa_edit_completo")
+                            
+                            col7, col8 = st.columns(2)
+                            
+                            with col7:
+                                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Tipo de Cliente</div>', unsafe_allow_html=True)
+                                tipo_cliente_edit = st.selectbox("", 
+                                    options=[""] + opcoes['tipos_cliente'],
+                                    index=opcoes['tipos_cliente'].index(lead_para_editar.get('Tipo_Cliente', '')) + 1 if lead_para_editar.get('Tipo_Cliente', '') in opcoes['tipos_cliente'] else 0,
+                                    label_visibility="collapsed", 
+                                    key="tipo_cliente_edit_completo")
+                            
+                            with col8:
+                                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Valor Estimado (R$)</div>', unsafe_allow_html=True)
+                                # CORREÇÃO: Converter valor com tratamento de erro
+                                valor_str = lead_para_editar.get('Valor_Estimado', '0.0')
+                                try:
+                                    valor_default = float(valor_str) if valor_str and str(valor_str).strip() else 0.0
+                                except (ValueError, TypeError):
+                                    valor_default = 0.0
+                                
+                                valor_estimado_edit = st.number_input("", 
+                                    min_value=0.0, 
+                                    value=valor_default,
+                                    step=100.0, 
+                                    format="%.2f",
+                                    label_visibility="collapsed", 
+                                    key="valor_edit_completo")
+                            
+                            # Seção 3: Localização
+                            st.markdown("""
+                            <div style="display: flex; align-items: center; gap: 12px; margin: 40px 0 30px 0; padding-bottom: 15px; border-bottom: 2px solid #f1f5f9;">
+                                <div style="background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%); color: white; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px;">📍</div>
+                                <h3 style="color: #1e293b; font-size: 20px; font-weight: 700; margin: 0;">Localização</h3>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                            col9, col10 = st.columns(2)
+                            
+                            with col9:
+                                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Estado (UF)</div>', unsafe_allow_html=True)
+                                estado_edit = st.selectbox("", 
+                                    options=[""] + opcoes['estados'],
+                                    index=opcoes['estados'].index(lead_para_editar.get('Estado', '')) + 1 if lead_para_editar.get('Estado', '') in opcoes['estados'] else 0,
+                                    label_visibility="collapsed", 
+                                    key="estado_edit_completo")
+                            
+                            with col10:
+                                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Cidade</div>', unsafe_allow_html=True)
+                                cidade_edit = st.text_input("",
+                                    value=lead_para_editar.get('Cidade', ''),
+                                    placeholder="Digite o nome da cidade",
+                                    key="cidade_edit_completo",
+                                    label_visibility="collapsed")
+                            
+                            # Seção 4: Origem e Interesse
+                            st.markdown("""
+                            <div style="display: flex; align-items: center; gap: 12px; margin: 40px 0 30px 0; padding-bottom: 15px; border-bottom: 2px solid #f1f5f9;">
+                                <div style="background: linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%); color: white; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px;">🎯</div>
+                                <h3 style="color: #1e293b; font-size: 20px; font-weight: 700; margin: 0;">Origem e Interesse</h3>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                            col11, col12 = st.columns(2)
+                            
+                            with col11:
+                                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Origem do Lead</div>', unsafe_allow_html=True)
+                                origem_lead_edit = st.selectbox("", 
+                                    options=[""] + opcoes['origens'],
+                                    index=opcoes['origens'].index(lead_para_editar.get('Origem_Lead', '')) + 1 if lead_para_editar.get('Origem_Lead', '') in opcoes['origens'] else 0,
+                                    label_visibility="collapsed", 
+                                    key="origem_edit_completo")
+                            
+                            with col12:
+                                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Produto de Interesse</div>', unsafe_allow_html=True)
+                                produto_interesse_edit = st.selectbox("", 
+                                    options=[""] + opcoes['produtos'],
+                                    index=opcoes['produtos'].index(lead_para_editar.get('Produto_Interesse', '')) + 1 if lead_para_editar.get('Produto_Interesse', '') in opcoes['produtos'] else 0,
+                                    label_visibility="collapsed", 
+                                    key="produto_edit_completo")
+                            
+                            col13, col14 = st.columns(2)
+                            
+                            with col13:
+                                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Canal Preferido</div>', unsafe_allow_html=True)
+                                canal_preferido_edit = st.selectbox("", 
+                                    options=[""] + opcoes['canais'],
+                                    index=opcoes['canais'].index(lead_para_editar.get('Canal_Preferido', '')) + 1 if lead_para_editar.get('Canal_Preferido', '') in opcoes['canais'] else 0,
+                                    label_visibility="collapsed", 
+                                    key="canal_edit_completo")
+                            
+                            with col14:
+                                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Interesse Principal</div>', unsafe_allow_html=True)
+                                interesse_principal_edit = st.selectbox("", 
+                                    options=[""] + opcoes['interesses'],
+                                    index=opcoes['interesses'].index(lead_para_editar.get('Interesse_Principal', '')) + 1 if lead_para_editar.get('Interesse_Principal', '') in opcoes['interesses'] else 0,
+                                    label_visibility="collapsed", 
+                                    key="interesse_edit_completo")
+                            
+                            # Seção 5: Status e Classificação
+                            st.markdown("""
+                            <div style="display: flex; align-items: center; gap: 12px; margin: 40px 0 30px 0; padding-bottom: 15px; border-bottom: 2px solid #f1f5f9;">
+                                <div style="background: linear-gradient(135deg, #ef4444 0%, #f87171 100%); color: white; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px;">📊</div>
+                                <h3 style="color: #1e293b; font-size: 20px; font-weight: 700; margin: 0;">Status e Classificação</h3>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                            col15, col16 = st.columns(2)
+                            
+                            with col15:
+                                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Status</div>', unsafe_allow_html=True)
+                                status_edit = st.selectbox("", 
+                                    options=[""] + opcoes['status'],
+                                    index=opcoes['status'].index(lead_para_editar.get('Status', '')) + 1 if lead_para_editar.get('Status', '') in opcoes['status'] else 0,
+                                    label_visibility="collapsed", 
+                                    key="status_edit_completo")
+                            
+                            with col16:
+                                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Classificação</div>', unsafe_allow_html=True)
+                                classificacao_edit = st.selectbox("", 
+                                    options=[""] + opcoes['classificacoes'],
+                                    index=opcoes['classificacoes'].index(lead_para_editar.get('Classificacao', '')) + 1 if lead_para_editar.get('Classificacao', '') in opcoes['classificacoes'] else 0,
+                                    label_visibility="collapsed", 
+                                    key="classificacao_edit_completo")
+
+                            # Seção 6: Atribuição e Follow-up
+                            st.markdown("""
+                            <div style="display: flex; align-items: center; gap: 12px; margin: 40px 0 30px 0; padding-bottom: 15px; border-bottom: 2px solid #f1f5f9;">
+                                <div style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: white; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px;">👥</div>
+                                <h3 style="color: #1e293b; font-size: 20px; font-weight: 700; margin: 0;">Atribuição e Follow-up</h3>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                            col17, col18 = st.columns(2)
+                            
+                            with col17:
+                                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Atribuído a</div>', unsafe_allow_html=True)
+                                atribuido_a_edit = st.selectbox("", 
+                                    options=[""] + opcoes['equipe'],
+                                    index=opcoes['equipe'].index(lead_para_editar.get('Atribuido_A', '')) + 1 if lead_para_editar.get('Atribuido_A', '') in opcoes['equipe'] else 0,
+                                    label_visibility="collapsed", 
+                                    key="atribuido_edit_completo")
+                            
+                            with col18:
+                                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Tag</div>', unsafe_allow_html=True)
+                                tag_edit = st.selectbox("", 
+                                    options=[""] + opcoes['tags'],
+                                    index=opcoes['tags'].index(lead_para_editar.get('Tag', '')) + 1 if lead_para_editar.get('Tag', '') in opcoes['tags'] else 0,
+                                    label_visibility="collapsed", 
+                                    key="tag_edit_completo")
+                            
+                            col19, col20 = st.columns(2)
+                            
+                            with col19:
+                                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Data Próximo Contato</div>', unsafe_allow_html=True)
+                                # Converter string para data se existir
+                                data_proximo_str = lead_para_editar.get('Data_Proximo_Contato', '')
+                                if data_proximo_str and data_proximo_str.strip():
+                                    try:
+                                        data_proximo = datetime.strptime(data_proximo_str, '%Y-%m-%d').date()
+                                    except:
+                                        data_proximo = None
+                                else:
+                                    data_proximo = None
+                                
+                                data_proximo_contato_edit = st.date_input("", 
+                                    value=data_proximo,
+                                    key="data_proximo_edit_completo",
+                                    label_visibility="collapsed")
+                            
+                            with col20:
+                                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Data Convertido</div>', unsafe_allow_html=True)
+                                # Converter string para data se existir
+                                data_convertido_str = lead_para_editar.get('Data_Convertido', '')
+                                if data_convertido_str and data_convertido_str.strip():
+                                    try:
+                                        data_convertido = datetime.strptime(data_convertido_str, '%Y-%m-%d').date()
+                                    except:
+                                        data_convertido = None
+                                else:
+                                    data_convertido = None
+                                
+                                data_convertido_edit = st.date_input("", 
+                                    value=data_convertido,
+                                    key="data_convertido_edit_completo",
+                                    label_visibility="collapsed")
+                            
+                            # Seção 7: Preferências
+                            st.markdown("""
+                            <div style="display: flex; align-items: center; gap: 12px; margin: 40px 0 30px 0; padding-bottom: 15px; border-bottom: 2px solid #f1f5f9;">
+                                <div style="background: linear-gradient(135deg, #10b981 0%, #34d399 100%); color: white; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px;">📢</div>
+                                <h3 style="color: #1e293b; font-size: 20px; font-weight: 700; margin: 0;">Preferências</h3>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                            col21, col22 = st.columns(2)
+                            
+                            with col21:
+                                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Receber Novidades</div>', unsafe_allow_html=True)
+                                receber_novidades_edit = st.selectbox("", 
+                                    options=["", "Sim", "Não"],
+                                    index=["", "Sim", "Não"].index(lead_para_editar.get('Receber_Novidades', '')) if lead_para_editar.get('Receber_Novidades', '') in ["", "Sim", "Não"] else 0,
+                                    label_visibility="collapsed", 
+                                    key="novidades_edit_completo")
+                            
+                            # Observações
+                            st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin: 40px 0 8px 0;">Observações</div>', unsafe_allow_html=True)
+                            observacoes_edit = st.text_area("", 
+                                value=lead_para_editar.get('Observacoes', ''),
+                                placeholder="Observações adicionais...",
+                                label_visibility="collapsed", 
+                                height=100, 
+                                key="obs_edit_completo")
+                            
+                            # CORREÇÃO: Adicionar st.form_submit_button() no nível do formulário
+                            col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
+                            with col_btn2:
+                                col_salvar, col_cancelar = st.columns(2)
+                                with col_salvar:
+                                    salvar_edicao = st.form_submit_button("💾 Salvar Alterações", use_container_width=True)
+                                with col_cancelar:
+                                    if st.form_submit_button("❌ Cancelar", use_container_width=True):
+                                        st.session_state.editing_lead = None
+                                        st.rerun()
+                            
+                            if salvar_edicao:
+                                from datetime import datetime
+                                # Converter datas para string
+                                data_proximo_str_edit = ""
+                                data_convertido_str_edit = ""
+                                
+                                if data_proximo_contato_edit:
+                                    data_proximo_str_edit = data_proximo_contato_edit.strftime("%Y-%m-%d")
+                                if data_convertido_edit:
+                                    data_convertido_str_edit = data_convertido_edit.strftime("%Y-%m-%d")
+                                
+                                dados_atualizados = {
+                                    'ID': st.session_state.editing_lead,
+                                    'Nome': nome_edit,
+                                    'Email': email_edit,
+                                    'CPF': limpar_numeros(cpf_edit) if cpf_edit else '',  # APENAS NÚMEROS
+                                    'Telefone': limpar_numeros(telefone_edit) if telefone_edit else '',  # APENAS NÚMEROS
+                                    'Cargo_Funcao': cargo_edit if cargo_edit else '',
+                                    'Empresa_Atual': empresa_edit if empresa_edit else '',
+                                    'Tipo_Cliente': tipo_cliente_edit if tipo_cliente_edit else '',
+                                    'Valor_Estimado': valor_estimado_edit if valor_estimado_edit else 0.0,
+                                    'Estado': estado_edit if estado_edit else '',
+                                    'Cidade': cidade_edit if cidade_edit else '',
+                                    'Origem_Lead': origem_lead_edit if origem_lead_edit else '',
+                                    'Produto_Interesse': produto_interesse_edit if produto_interesse_edit else '',
+                                    'Canal_Preferido': canal_preferido_edit if canal_preferido_edit else '',
+                                    'Interesse_Principal': interesse_principal_edit if interesse_principal_edit else '',
+                                    'Status': status_edit if status_edit else 'Novo',
+                                    'Classificacao': classificacao_edit if classificacao_edit else '',
+                                    'Atribuido_A': atribuido_a_edit if atribuido_a_edit else '',
+                                    'Tag': tag_edit if tag_edit else '',
+                                    'Data_Proximo_Contato': data_proximo_str_edit,
+                                    'Data_Convertido': data_convertido_str_edit,
+                                    'Receber_Novidades': receber_novidades_edit if receber_novidades_edit else '',
+                                    'Observacoes': observacoes_edit if observacoes_edit else '',
+                                    'Ultimo_Contato': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                    'Ultima_Acao': 'Edição completa via sistema'
+                                }
+                                
+                                sucesso = atualizar_lead_no_google_sheets(st.session_state.editing_lead, dados_atualizados)
+                                if sucesso:
+                                    st.success("✅ Lead atualizado com sucesso!")
+                                    st.session_state.editing_lead = None
+                                    st.rerun()
+                    
+                    st.markdown('</div>', unsafe_allow_html=True)
+                
+                # Se estiver confirmando exclusão
+                elif st.session_state.delete_confirm:
+                    st.markdown('<div class="white-card">', unsafe_allow_html=True)
+                    st.warning(f"⚠️ **Tem certeza que deseja excluir o lead com ID {st.session_state.delete_confirm}?**")
+                    
+                    lead_para_excluir = df_leads[df_leads['ID'] == st.session_state.delete_confirm]
+                    if not lead_para_excluir.empty:
+                        lead_para_excluir = lead_para_excluir.iloc[0]
+                        st.write(f"**Nome:** {lead_para_excluir.get('Nome', 'N/A')}")
+                        st.write(f"**E-mail:** {lead_para_excluir.get('Email', 'N/A')}")
+                        st.write(f"**Empresa:** {lead_para_excluir.get('Empresa_Atual', 'N/A')}")
+                    
+                    col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
+                    with col_btn2:
+                        col_excluir, col_cancelar = st.columns(2)
+                        with col_excluir:
+                            if st.button("🗑️ Sim, excluir", type="primary", use_container_width=True):
+                                sucesso = deletar_lead_do_google_sheets(st.session_state.delete_confirm)
+                                if sucesso:
+                                    st.success("✅ Lead excluído com sucesso!")
+                                    st.session_state.delete_confirm = None
+                                    st.rerun()
+                        with col_cancelar:
+                            if st.button("↩️ Cancelar", use_container_width=True):
+                                st.session_state.delete_confirm = None
+                                st.rerun()
+                    
+                    st.markdown('</div>', unsafe_allow_html=True)
+                
+                # Mostrar tabela normal
+                else:
+                    # Adicionar colunas de ações
+                    filtered_df = filtered_df.copy()
+                    
+                    # Criar DataFrame para exibição com ações
+                    st.dataframe(filtered_df, use_container_width=True, hide_index=True, height=400)
+                    
+                    # Controles de ação abaixo da tabela
+                    st.markdown('<div style="margin-top: 20px;"></div>', unsafe_allow_html=True)
+                    
+                    col_sel, col_edit, col_del = st.columns(3)
+                    
+                    with col_sel:
+                        st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Selecionar Lead</div>', unsafe_allow_html=True)
+                        
+                        # Criar opções no formato "Nome - Email (ID)" para fácil identificação
+                        opcoes_leads = [""]
+                        for _, lead in filtered_df.iterrows():
+                            nome = lead.get('Nome', 'Sem nome')
+                            email = lead.get('Email', 'Sem email')
+                            lead_id = lead.get('ID', 'Sem ID')
+                            # Formato: "Nome Completo - email@exemplo.com (ID: L123)"
+                            display_text = f"{nome} - {email} (ID: {lead_id})"
+                            opcoes_leads.append(display_text)
+                        
+                        lead_selecionado_display = st.selectbox(
+                            "", 
+                            options=opcoes_leads, 
+                            index=0, 
+                            label_visibility="collapsed", 
+                            key="select_lead"
+                        )
+                        
+                        # Extrair o ID do texto selecionado
+                        lead_id_selecionado = None
+                        if lead_selecionado_display and lead_selecionado_display != "":
+                            # Buscar o ID entre parênteses
+                            import re
+                            match = re.search(r'\(ID:\s*([^)]+)\)', lead_selecionado_display)
+                            if match:
+                                lead_id_selecionado = match.group(1).strip()
+                    
+                    with col_edit:
+                        st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Editar</div>', unsafe_allow_html=True)
+                        if st.button("✏️ Editar Lead", use_container_width=True, disabled=not lead_id_selecionado):
+                            if lead_id_selecionado:
+                                st.session_state.editing_lead = lead_id_selecionado
+                                st.rerun()
+                    
+                    with col_del:
+                        st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Excluir</div>', unsafe_allow_html=True)
+                        if st.button("🗑️ Excluir Lead", use_container_width=True, disabled=not lead_id_selecionado):
+                            if lead_id_selecionado:
+                                st.session_state.delete_confirm = lead_id_selecionado
+                                st.rerun()
+                
+            else:
+                st.warning("Nenhum lead encontrado")
+            
+        else:
+            st.markdown('<div class="white-card" style="padding: 40px 20px; text-align: center;">', unsafe_allow_html=True)
+            st.markdown('<div style="font-size: 48px; margin-bottom: 20px; color: #cbd5e1;">📭</div>', unsafe_allow_html=True)
+            st.markdown('<h3 style="color: #475569; font-size: 18px; margin-bottom: 10px;">Nenhum lead cadastrado</h3>', unsafe_allow_html=True)
+            st.markdown('<p style="color: #64748b; font-size: 14px;">Use a página "Cadastrar" para adicionar novos leads ao sistema.</p>', unsafe_allow_html=True)
+            
+            if st.button("➕ Ir para Cadastrar", type="primary"):
+                st.session_state.menu_atual = "Cadastrar"
+                st.rerun()
+                
+            st.markdown('</div>', unsafe_allow_html=True)
+        
+    elif menu == "Cadastrar":
+
+        st.markdown('<div class="white-card full-width-form">', unsafe_allow_html=True)
+
+        # Formulário de Cadastro
+        with st.form("novo_lead"):
+            # Seção 1: Dados Pessoais
+            st.markdown("""
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 30px; padding-bottom: 15px; border-bottom: 2px solid #f1f5f9;">
+                <div style="background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); color: white; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px;">👤</div>
+                <h3 style="color: #1e293b; font-size: 20px; font-weight: 700; margin: 0;">Informações Pessoais</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Nome Completo *</div>', unsafe_allow_html=True)
+                nome = st.text_input("", placeholder="Digite o nome completo", label_visibility="collapsed", key="nome_input")
+            
+            with col2:
+                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">E-mail *</div>', unsafe_allow_html=True)
+                email = st.text_input("", placeholder="exemplo@empresa.com", label_visibility="collapsed", key="email_input")
+            
+            col3, col4 = st.columns(2)
+            
+            with col3:
+                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">CPF</div>', unsafe_allow_html=True)
+                cpf = st.text_input("", placeholder="000.000.000-00", label_visibility="collapsed", key="cpf_input")
+            
+            with col4:
+                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Telefone/WhatsApp</div>', unsafe_allow_html=True)
+                telefone = st.text_input("", placeholder="(00) 00000-0000", label_visibility="collapsed", key="telefone_input")
+            
+            # Seção 2: Dados Profissionais
+            st.markdown("""
+            <div style="display: flex; align-items: center; gap: 12px; margin: 40px 0 30px 0; padding-bottom: 15px; border-bottom: 2px solid #f1f5f9;">
+                <div style="background: linear-gradient(135deg, #10b981 0%, #34d399 100%); color: white; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px;">💼</div>
+                <h3 style="color: #1e293b; font-size: 20px; font-weight: 700; margin: 0;">Dados Profissionais</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            col5, col6 = st.columns(2)
+            
+            with col5:
+                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Cargo/Função</div>', unsafe_allow_html=True)
+                cargo = st.selectbox("", options=[""] + opcoes['cargos'], index=0, label_visibility="collapsed", key="cargo_input")
+            
+            with col6:
+                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Empresa/Organização</div>', unsafe_allow_html=True)
+                empresa = st.text_input("", placeholder="Ex: Prefeitura Municipal", label_visibility="collapsed", key="empresa_input")
+            
+            col7, col8 = st.columns(2)
+            
+            with col7:
+                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Tipo de Cliente</div>', unsafe_allow_html=True)
+                tipo_cliente = st.selectbox("", options=[""] + opcoes['tipos_cliente'], index=0, label_visibility="collapsed", key="tipo_cliente_input")
+            
+            with col8:
+                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Valor Estimado (R$)</div>', unsafe_allow_html=True)
+                valor_estimado = st.number_input("", min_value=0.0, value=0.0, step=100.0, format="%.2f", label_visibility="collapsed", key="valor_input")
+            
+            # Seção 3: Localização
+            st.markdown("""
+            <div style="display: flex; align-items: center; gap: 12px; margin: 40px 0 30px 0; padding-bottom: 15px; border-bottom: 2px solid #f1f5f9;">
+                <div style="background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%); color: white; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px;">📍</div>
+                <h3 style="color: #1e293b; font-size: 20px; font-weight: 700; margin: 0;">Localização</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            col9, col10 = st.columns(2)
+            
+            with col9:
+                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Estado (UF)</div>', unsafe_allow_html=True)
+                estado = st.selectbox("", options=[""] + opcoes['estados'], index=0, label_visibility="collapsed", key="estado_select")
+            
+            with col10:
+                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Cidade *</div>', unsafe_allow_html=True)
+                
+                # Campo de texto SEMPRE habilitado, SEM restrições
+                cidade = st.text_input(
+                    "",
+                    placeholder="Digite o nome da cidade",
+                    key="cidade_input",
+                    label_visibility="collapsed"
+                )
+                
+                cidade_selecionada = cidade.strip() if cidade else ""
+            
+            # Seção 4: Origem e Interesse
+            st.markdown("""
+            <div style="display: flex; align-items: center; gap: 12px; margin: 40px 0 30px 0; padding-bottom: 15px; border-bottom: 2px solid #f1f5f9;">
+                <div style="background: linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%); color: white; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px;">🎯</div>
+                <h3 style="color: #1e293b; font-size: 20px; font-weight: 700; margin: 0;">Origem e Interesse</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            col11, col12 = st.columns(2)
+            
+            with col11:
+                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Origem do Lead</div>', unsafe_allow_html=True)
+                origem_lead = st.selectbox("", options=[""] + opcoes['origens'], index=0, label_visibility="collapsed", key="origem_input")
+            
+            with col12:
+                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Produto de Interesse</div>', unsafe_allow_html=True)
+                produto_interesse = st.selectbox("", options=[""] + opcoes['produtos'], index=0, label_visibility="collapsed", key="produto_input")
+            
+            col13, col14 = st.columns(2)
+            
+            with col13:
+                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Canal Preferido</div>', unsafe_allow_html=True)
+                canal_preferido = st.selectbox("", options=[""] + opcoes['canais'], index=0, label_visibility="collapsed", key="canal_input")
+            
+            with col14:
+                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Interesse Principal</div>', unsafe_allow_html=True)
+                interesse_principal = st.selectbox("", options=[""] + opcoes['interesses'], index=0, label_visibility="collapsed", key="interesse_input")
+            
+            # Seção 5: Status e Classificação
+            st.markdown("""
+            <div style="display: flex; align-items: center; gap: 12px; margin: 40px 0 30px 0; padding-bottom: 15px; border-bottom: 2px solid #f1f5f9;">
+                <div style="background: linear-gradient(135deg, #ef4444 0%, #f87171 100%); color: white; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px;">📊</div>
+                <h3 style="color: #1e293b; font-size: 20px; font-weight: 700; margin: 0;">Status e Classificação</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            col15, col16 = st.columns(2)
+            
+            with col15:
+                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Status</div>', unsafe_allow_html=True)
+                status = st.selectbox("", options=[""] + opcoes['status'], index=1 if opcoes['status'] and "Novo" in opcoes['status'] else 0, label_visibility="collapsed", key="status_input")
+            
+            with col16:
+                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Classificação</div>', unsafe_allow_html=True)
+                classificacao = st.selectbox("", options=[""] + opcoes['classificacoes'], index=0, label_visibility="collapsed", key="classificacao_input")
+
+            # Seção 6: Atribuição e Follow-up
+            st.markdown("""
+            <div style="display: flex; align-items: center; gap: 12px; margin: 40px 0 30px 0; padding-bottom: 15px; border-bottom: 2px solid #f1f5f9;">
+                <div style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: white; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px;">👥</div>
+                <h3 style="color: #1e293b; font-size: 20px; font-weight: 700; margin: 0;">Atribuição e Follow-up</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            col17, col18 = st.columns(2)
+            
+            with col17:
+                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Atribuído a</div>', unsafe_allow_html=True)
+                atribuido_a = st.selectbox("", options=[""] + opcoes['equipe'], index=0, label_visibility="collapsed", key="atribuido_input")
+            
+            with col18:
+                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Tag</div>', unsafe_allow_html=True)
+                tag = st.selectbox("", options=[""] + opcoes['tags'], index=0, label_visibility="collapsed", key="tag_input")
+            
+            col19, col20 = st.columns(2)
+            
+            with col19:
+                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Data Próximo Contato</div>', unsafe_allow_html=True)
+                data_proximo_contato = st.date_input("", value=None, key="data_proximo_input", label_visibility="collapsed")
+            
+            with col20:
+                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Data Convertido</div>', unsafe_allow_html=True)
+                data_convertido = st.date_input("", value=None, key="data_convertido_input", label_visibility="collapsed")
+            
+            # Seção 7: Preferências
+            st.markdown("""
+            <div style="display: flex; align-items: center; gap: 12px; margin: 40px 0 30px 0; padding-bottom: 15px; border-bottom: 2px solid #f1f5f9;">
+                <div style="background: linear-gradient(135deg, #10b981 0%, #34d399 100%); color: white; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px;">📢</div>
+                <h3 style="color: #1e293b; font-size: 20px; font-weight: 700; margin: 0;">Preferências</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            col21, col22 = st.columns(2)
+            
+            with col21:
+                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Receber Novidades</div>', unsafe_allow_html=True)
+                receber_novidades = st.selectbox("", options=["", "Sim", "Não"], index=0, label_visibility="collapsed", key="novidades_input")
+            
+            # Observações
+            st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin: 40px 0 8px 0;">Observações</div>', unsafe_allow_html=True)
+            observacoes = st.text_area("", placeholder="Observações adicionais...", label_visibility="collapsed", height=100, key="obs_input")
+            
+            # Botão de envio - Centralizado
+            st.markdown('<div style="margin-top: 50px;"></div>', unsafe_allow_html=True)
+            
+            col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
+            with col_btn2:
+                # Adicionar a classe gov-purple-btn ao redor do botão
+                st.markdown('<div class="gov-purple-btn">', unsafe_allow_html=True)
+                submitted = st.form_submit_button(
+                    "🚀 **Cadastrar Lead**",
+                    use_container_width=True,
+                    help="Clique para adicionar este lead ao sistema"
+                )
+                st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Processar envio do formulário
+        if submitted:
+            # Importar datetime ANTES de qualquer uso
+            from datetime import datetime
+            
+            # Validação SIMPLES
+            if not nome or not email:
+                st.error("❌ **Campos obrigatórios:** Nome e e-mail são necessários!")
+            elif not estado or estado.strip() == "":
+                st.error("❌ **Campo obrigatório:** Selecione um Estado!")
+            elif not cidade_selecionada or cidade_selecionada.strip() == "":
+                st.error("❌ **Campo obrigatório:** Digite a Cidade!")
+            
+            # VALIDAÇÃO DE CPF (apenas números)
+            elif cpf and not cpf.replace('.', '').replace('-', '').replace(' ', '').isdigit():
+                st.error("❌ **CPF inválido:** Digite apenas números!")
+            
+            # VALIDAÇÃO DE TELEFONE (apenas números)
+            elif telefone and not telefone.replace('(', '').replace(')', '').replace(' ', '').replace('-', '').replace('+', '').isdigit():
+                st.error("❌ **Telefone inválido:** Digite apenas números!")
+            
+            else:
+                # GERAR O ID DO LEAD
+                lead_id = f"L{datetime.now().strftime('%Y%m%d%H%M%S')}"
+                
+                # Converter datas para string (se elas existirem)
+                data_proximo_str = ""
+                data_convertido_str = ""
+                
+                # Verificar se as variáveis de data existem antes de usá-las
+                try:
+                    if data_proximo_contato:
+                        data_proximo_str = data_proximo_contato.strftime("%Y-%m-%d")
+                except NameError:
+                    pass  # Variável não definida, mantém string vazia
+                    
+                try:
+                    if data_convertido:
+                        data_convertido_str = data_convertido.strftime("%Y-%m-%d")
+                except NameError:
+                    pass  # Variável não definida, mantém string vazia
+                
+                # Criar dicionário com os dados
+                novo_lead = {
+                    'ID': lead_id,
+                    'Nome': nome,
+                    'Email': email,
+                    'CPF': limpar_numeros(cpf) if cpf else '',  # APENAS NÚMEROS
+                    'Telefone': limpar_numeros(telefone) if telefone else '',  # APENAS NÚMEROS
+                    'Cargo_Funcao': cargo if cargo else '',
+                    'Empresa_Atual': empresa if empresa else '',
+                    'Tipo_Cliente': tipo_cliente if tipo_cliente else '',
+                    'Valor_Estimado': valor_estimado if valor_estimado else 0.0,
+                    'Estado': estado if estado else '',
+                    'Cidade': cidade_selecionada if cidade_selecionada else '',
+                    'Origem_Lead': origem_lead if origem_lead else '',
+                    'Produto_Interesse': produto_interesse if produto_interesse else '',
+                    'Canal_Preferido': canal_preferido if canal_preferido else '',
+                    'Interesse_Principal': interesse_principal if interesse_principal else '',
+                    'Status': status if status else 'Novo',
+                    'Classificacao': classificacao if classificacao else '',
+                    'Atribuido_A': atribuido_a if atribuido_a else '',
+                    'Tag': tag if tag else '',
+                    'Data_Proximo_Contato': data_proximo_str,
+                    'Data_Convertido': data_convertido_str,
+                    'Receber_Novidades': receber_novidades if receber_novidades else '',
+                    'Observacoes': observacoes if observacoes else '',
+                    'Data_Cadastro': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),  # <-- USA datetime
+                    'Ultimo_Contato': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),  # <-- USA datetime
+                    'Ultima_Acao': 'Cadastro via formulário'
+                }
+                
+                # Salvar no Google Sheets
+                sucesso = salvar_lead_no_google_sheets(novo_lead)
+                
+                if sucesso:
+                    st.success("✅ Lead cadastrado com sucesso!")
+                    st.balloons()
+                    
+                    # Adicionar botão para cadastrar novo lead
+                    st.markdown('<div style="text-align: center; margin-top: 30px;">', unsafe_allow_html=True)
+                    st.markdown('<div class="gov-purple-btn">', unsafe_allow_html=True)
+                    if st.button("➕ Cadastrar Novo Lead", key="novo_lead_btn", use_container_width=True):
+                        st.rerun()
+                    st.markdown('</div>', unsafe_allow_html=True)
+    
+    elif menu == "Relatórios":
+        # Relatórios
+        st.markdown('<div class="white-card">', unsafe_allow_html=True)
+        st.subheader("Relatórios")
+        st.info("Módulo de relatórios em desenvolvimento...")
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+    elif menu == "Configurações":
+        # Configurações
+        st.markdown('<div class="white-card">', unsafe_allow_html=True)
+        st.subheader("Configurações")
+        st.info("Painel de configurações em desenvolvimento...")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+if __name__ == "__main__":
+    main()
