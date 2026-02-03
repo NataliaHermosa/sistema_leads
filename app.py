@@ -395,6 +395,25 @@ button[kind="secondary"]:active {
     color: #522b7b !important;
 }
             
+/* ===============================
+   ESTILOS PARA MULTISELECT
+   =============================== */
+div[data-baseweb="select"] [role="option"] {
+    padding: 10px !important;
+}
+
+/* Container do multiselect */
+.stMultiSelect > div > div {
+    min-height: 48px !important;
+}
+
+/* Tags selecionadas no multiselect */
+.stMultiSelect [data-baseweb="tag"] {
+    margin: 2px !important;
+    background-color: #f1f5f9 !important;
+    border-color: #cbd5e1 !important;
+}
+            
 </style>
 """, unsafe_allow_html=True)
 
@@ -430,9 +449,46 @@ div[data-baseweb="select"]:focus-within,
 </style>
 """, unsafe_allow_html=True)
 
+# ============================================================================
+# 7 CSS — CHECKBOX COM REALCE (adicione esta seção depois da 5 ou 6)
+# ============================================================================
+st.markdown("""
+<style>
+/* Realce forte para checkbox selecionado */
+div[data-testid="stCheckbox"]:has(input:checked) label {
+    background-color: #f3e8ff !important;
+    border: 2px solid #8b5cf6 !important;
+    border-radius: 10px !important;
+    padding: 12px 16px !important;
+    margin: 6px 0 !important;
+    font-weight: 700 !important;
+    color: #7c3aed !important;
+    box-shadow: 0 2px 8px rgba(139, 92, 246, 0.2) !important;
+}
+
+/* Checkbox maior e colorido */
+div[data-testid="stCheckbox"] input[type="checkbox"] {
+    transform: scale(1.4) !important;
+    margin-right: 12px !important;
+    accent-color: #7c3aed !important;
+}
+
+/* Adiciona ícone de verificação */
+div[data-testid="stCheckbox"]:has(input:checked) label::before {
+    content: "✅ " !important;
+    margin-right: 8px !important;
+}
+
+/* Label para campo obrigatório */
+.required-field::after {
+    content: " *" !important;
+    color: #dc2626 !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # ============================================================================
-# 7. FUNÇÕES DE INTERFACE
+# 8. FUNÇÕES DE INTERFACE
 # ============================================================================
 def render_metric_card(label, value, delta=None):
     """Renderiza um card de métrica"""
@@ -464,6 +520,7 @@ def render_header_menu():
             ("📊 Dashboard", "Dashboard"),
             ("📝 Cadastrar", "Cadastrar"),
             ("👥 Leads", "Leads"),
+            ("🎓 Cursos", "Cursos"),
             ("📈 Relatórios", "Relatórios"),
             ("⚙️ Configurações", "Configurações")
         ]
@@ -481,7 +538,7 @@ def render_header_menu():
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ============================================================================
-# 8. FUNÇÕES DE DADOS
+# 9. FUNÇÕES DE DADOS
 # ============================================================================
 def get_valores_padrao():
     """Retorna valores padrão para dropdowns"""
@@ -497,8 +554,7 @@ def get_valores_padrao():
                       'Certificação', 'Workshop', 'Material Didático', 'Outro'],
         'produtos': ['Curso Básico', 'Curso Avançado', 'Mentoria', 'Consultoria'],
         'canais': ['Email', 'Telefone', 'WhatsApp', 'Presencial'],
-        'tipos_cliente': ['Prefeitura', 'Câmara', 'Consórcio', 'Judiciário', 
-                         'Tribunal de Contas', 'Ministério Público', 'Defensoria Pública', 'Estatais'],
+        'tipos_cliente': [],  # Agora vazio, será carregado da planilha configuracoes
         'tags': ['Prioridade Alta', 'Recontatar', 'Cliente Potencial', 'Seguir-up', 'Promoção'],
         'equipe': [],  # Será preenchido da planilha
         'cidades': {}
@@ -601,7 +657,7 @@ def carregar_opcoes_dropdown():
                 'origens': 'Origens', 'status': 'Status', 'classificacoes': 'Classificacoes',
                 'estados': 'Estados', 'cargos': 'Cargos_Comuns', 'interesses': 'Interesses',
                 'produtos': 'Produto', 'canais': 'Canais_Preferidos', 'tipos_cliente': 'Tipos_Cliente',
-                'tags': 'Tags'  # Nova coluna para tags
+                'tags': 'Tags'
             }
 
             for chave, coluna in mapeamento.items():
@@ -637,13 +693,39 @@ def carregar_opcoes_dropdown():
         cidades_carregadas = carregar_cidades_por_estado()
         st.session_state.opcoes['cidades'] = cidades_carregadas
         opcoes['cidades'] = cidades_carregadas
-        opcoes['equipe'] = []  # Valor padrão para equipe
-        opcoes['tags'] = []    # Valor padrão para tags
+        opcoes['equipe'] = []
+        opcoes['tags'] = []
         return opcoes
 
 def salvar_lead_no_google_sheets(novo_lead):
-    """Salva um novo lead no Google Sheets"""
+    """Salva um novo lead no Google Sheets com validação de e-mail duplicado"""
     try:
+        # VALIDAÇÃO: Verificar se o e-mail já existe
+        email = novo_lead.get('Email', '')
+        if email:
+            resultado_verificacao = verificar_email_existente(email)
+            
+            if resultado_verificacao['existe']:
+                # Montar mensagem de erro detalhada
+                mensagem_erro = f"""
+                ⚠️ **E-MAIL JÁ CADASTRADO!**
+                
+                O e-mail **{email}** já está cadastrado no sistema.
+                
+                **Lead existente:**
+                - **Nome:** {resultado_verificacao.get('nome', 'Não informado')}
+                - **ID:** {resultado_verificacao.get('id', 'Não informado')}
+                - **Data de Cadastro:** {resultado_verificacao.get('data_cadastro', 'Não informada')}
+                
+                **Ação necessária:**
+                1. Verifique se é o mesmo lead
+                2. Se for um novo lead, use um e-mail diferente
+                3. Se for o mesmo lead, use a opção de edição na página "Leads"
+                """
+                st.error(mensagem_erro)
+                return False
+        
+        # Se o e-mail não existe, prosseguir com o cadastro
         creds = get_credentials()
         client = gspread.authorize(creds)
         planilha = client.open_by_key(SPREADSHEET_ID)
@@ -683,7 +765,7 @@ def salvar_lead_no_google_sheets(novo_lead):
         return False
     
 # ============================================================================
-# 9. FUNÇÕES PARA EDITAR E EXCLUIR LEADS
+# 10. FUNÇÕES PARA EDITAR E EXCLUIR LEADS
 # ============================================================================
 
 def deletar_lead_do_google_sheets(lead_id):
@@ -781,7 +863,6 @@ def atualizar_lead_no_google_sheets(lead_id, dados_atualizados):
             
             # LIMPAR O CACHE DOS LEADS
             st.cache_data.clear()  # Limpa todo o cache de dados
-            # ou especificamente: load_leads.clear() se quiser apenas essa função
             
             return True
         return False
@@ -792,7 +873,7 @@ def atualizar_lead_no_google_sheets(lead_id, dados_atualizados):
     
 
 # ============================================================================
-# 10. FUNÇÕES PARA CARREGAR DADOS
+# 11. FUNÇÕES PARA CARREGAR DADOS
 # ============================================================================
 def limpar_numeros(texto):
     """Remove tudo que não é número"""
@@ -834,9 +915,195 @@ def load_leads():
         st.error(f"❌ Erro ao carregar leads: {e}")
         return pd.DataFrame()
     
-   
+def verificar_email_existente(email):
+    """Verifica se o e-mail já existe na planilha de leads"""
+    try:
+        df_leads = load_leads()
+        
+        if df_leads.empty:
+            return {'existe': False}
+        
+        if 'Email' in df_leads.columns:
+            # Converter para minúsculas para comparação case-insensitive
+            emails_existentes = df_leads['Email'].astype(str).str.lower().fillna('').tolist()
+            email_lower = str(email).strip().lower()
+            
+            # Verificar se o e-mail já existe
+            if email_lower in emails_existentes:
+                # Encontrar o lead existente para mostrar informações
+                lead_existente = df_leads[df_leads['Email'].astype(str).str.lower() == email_lower]
+                if not lead_existente.empty:
+                    return {
+                        'existe': True,
+                        'nome': lead_existente.iloc[0].get('Nome', ''),
+                        'id': lead_existente.iloc[0].get('ID', ''),
+                        'data_cadastro': lead_existente.iloc[0].get('Data_Cadastro', ''),
+                        'empresa': lead_existente.iloc[0].get('Ente', '')
+                    }
+            return {'existe': False}
+        return {'existe': False}
+        
+    except Exception as e:
+        st.error(f"Erro ao verificar e-mail: {e}")
+        return {'existe': False}
+    
 # ============================================================================
-# 11. APLICAÇÃO PRINCIPAL
+# FUNÇÃO TEMPORÁRIA PARA ANÁLISE CRUZADA
+# ============================================================================
+
+def analisar_cruzar_dados(df_leads, df_cursos):
+    """
+    Função temporária para análise cruzada
+    Você vai substituir pela sua função real depois
+    """
+    try:
+        # Verificar se os DataFrames têm dados
+        if df_leads.empty:
+            return {
+                'status': 'erro',
+                'mensagem': 'Base de leads vazia'
+            }
+        
+        if df_cursos.empty:
+            return {
+                'status': 'erro', 
+                'mensagem': 'Base de cursos vazia'
+            }
+        
+        # SIMULAÇÃO - substitua pela sua lógica real
+        total_leads = len(df_leads)
+        
+        # Contagens simuladas (apenas para mostrar algo)
+        leads_participantes_qtd = min(10, total_leads)
+        leads_desistentes_qtd = min(5, total_leads - leads_participantes_qtd)
+        leads_nao_abordados_qtd = total_leads - leads_participantes_qtd - leads_desistentes_qtd
+        
+        return {
+            'status': 'sucesso',
+            'leads_participantes': {
+                'quantidade': leads_participantes_qtd,
+                'lista': [],
+                'df': pd.DataFrame()
+            },
+            'leads_desistentes': {
+                'quantidade': leads_desistentes_qtd,
+                'lista': [],
+                'df': pd.DataFrame(),
+                'motivos_por_municipio': {}
+            },
+            'leads_nao_abordados': {
+                'quantidade': leads_nao_abordados_qtd,
+                'lista': [],
+                'df': pd.DataFrame()
+            }
+        }
+        
+    except Exception as e:
+        return {
+            'status': 'erro',
+            'mensagem': f'Erro na análise: {str(e)}'
+        }
+    
+# ============================================================================
+# FUNÇÕES PARA IMPORTAR DADOS DE CURSOS 
+# ============================================================================
+
+@st.cache_data(ttl=300)  # Cache de 5 minutos
+def importar_dados_cursos_automatico():
+    """
+    Importa dados das 4 abas de cursos - PARA PRODUÇÃO
+    Funciona localmente e no Streamlit Cloud
+    """
+    try:
+        # O arquivo deve estar na mesma pasta do app.py
+        arquivo_local = "planilha.xlsx"
+        
+        # Carregar todas as abas de uma vez
+        todas_abas = pd.read_excel(arquivo_local, sheet_name=None, engine='openpyxl')
+        
+        # Extrair cada aba (com fallback para DataFrame vazio)
+        df_agosto = todas_abas.get('agosto', pd.DataFrame())
+        df_novembro = todas_abas.get('novembro', pd.DataFrame())
+        df_desistencias = todas_abas.get('desistencias', pd.DataFrame())
+        df_desistencias_historico = todas_abas.get('desistencias_historico', pd.DataFrame())
+        
+        # PADRÃO DOS NOVOS CABEÇALHOS
+        # ENTE, MUNICIPIO, CONSULTOR, SDR, MOTIVO_OBJECAO
+        
+        # Padronizar colunas (caso haja variações)
+        for df in [df_agosto, df_novembro, df_desistencias, df_desistencias_historico]:
+            if not df.empty:
+                # Remover espaços extras e padronizar nomes
+                df.columns = [col.strip().upper() if isinstance(col, str) else col for col in df.columns]
+                
+                # Mapear variações para os nomes padronizados
+                mapeamento_colunas = {
+                    # Para ente
+                    'ENTE': 'ENTE',
+                    'ENTIDADE': 'ENTE',
+                    'ÓRGÃO': 'ENTE',
+                    
+                    # Para município
+                    'MUNICÍPIO': 'MUNICIPIO',
+                    'MUNICIPIO': 'MUNICIPIO',
+                    'CIDADE': 'MUNICIPIO',
+                    'LOCALIDADE': 'MUNICIPIO',
+                    
+                    # Para consultor
+                    'CONSULTOR': 'CONSULTOR',
+                    'VENDEDOR': 'CONSULTOR',
+                    'RESPONSÁVEL': 'CONSULTOR',
+                    
+                    # Para SDR
+                    'SDR': 'SDR',
+                    'ATENDENTE': 'SDR',
+                    'ANALISTA': 'SDR',
+                    
+                    # Para motivo/objeção
+                    'MOTIVO_OBJECAO': 'MOTIVO_OBJECAO',
+                    'MOTIVO/OBJEÇÃO': 'MOTIVO_OBJECAO',
+                    'MOTIVO': 'MOTIVO_OBJECAO',
+                    'OBJEÇÃO': 'MOTIVO_OBJECAO',
+                    'JUSTIFICATIVA': 'MOTIVO_OBJECAO'
+                }
+                
+                # Aplicar mapeamento
+                novos_nomes = {}
+                for col in df.columns:
+                    if isinstance(col, str):
+                        col_upper = col.upper()
+                        for padrao, novo_nome in mapeamento_colunas.items():
+                            if padrao in col_upper:
+                                novos_nomes[col] = novo_nome
+                                break
+                        if col not in novos_nomes:
+                            # Manter o nome se não encontrar no mapeamento
+                            novos_nomes[col] = col_upper
+                
+                df.rename(columns=novos_nomes, inplace=True)
+        
+        # Log silencioso (apenas para debug se necessário)
+        if st.session_state.get('debug_mode', False):
+            print(f"📊 Dados carregados: Agosto({len(df_agosto)}), Nov({len(df_novembro)}), "
+                  f"Desist({len(df_desistencias)}), Hist({len(df_desistencias_historico)})")
+            
+            # Mostrar cabeçalhos para debug
+            for nome, df_dados in [('Agosto', df_agosto), ('Novembro', df_novembro), 
+                                  ('Desistências', df_desistencias), ('Histórico', df_desistencias_historico)]:
+                if not df_dados.empty:
+                    print(f"  {nome} colunas:", list(df_dados.columns))
+        
+        return df_agosto, df_novembro, df_desistencias, df_desistencias_historico
+        
+    except FileNotFoundError:
+        st.warning("Arquivo 'planilha.xlsx' não encontrado na pasta do projeto.")
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+    except Exception as e:
+        st.error(f"Erro ao carregar planilha: {e}")
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+     
+# ============================================================================
+# 12. APLICAÇÃO PRINCIPAL
 # ============================================================================
 def main():
     # Carregar opções
@@ -860,18 +1127,6 @@ def main():
             # Calcular conversão real (Convertidos / Total)
             convertidos = len(df_leads[df_leads['Status'] == 'Convertido']) if 'Status' in df_leads.columns else 0
             taxa_conversao = (convertidos / total * 100) if total > 0 else 0
-            
-            # Valor total estimado - CORRIGIDO
-            if 'Valor_Estimado' in df_leads.columns:
-                try:
-                    # Converter para numérico, tratando erros como NaN
-                    valores_numericos = pd.to_numeric(df_leads['Valor_Estimado'], errors='coerce')
-                    # Substituir NaN por 0 e somar
-                    valor_total = valores_numericos.fillna(0).sum()
-                except Exception as e:
-                    valor_total = 0
-            else:
-                valor_total = 0
             
             # Leads por mês (últimos 6 meses)
             if 'Data_Cadastro' in df_leads.columns:
@@ -943,8 +1198,8 @@ def main():
                 align-items: center;
                 justify-content: space-between;
                 margin: 30px 0 20px 0;
-                padding-bottom: 0;  /* Removido padding inferior */
-                border-bottom: none;  /* REMOVIDA A LINHA - border-bottom: none */
+                padding-bottom: 0;
+                border-bottom: none;
             }
             .section-title {
                 font-size: 1.4rem;
@@ -956,8 +1211,8 @@ def main():
                 border-radius: 12px;
                 padding: 20px;
                 margin-bottom: 20px;
-                border: none !important; /* Força a remoção de qualquer borda */
-                box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); /* Opcional: sombra leve em vez de borda */
+                border: none !important;
+                box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
             }
             .status-badge {
                 display: inline-block;
@@ -1020,14 +1275,8 @@ def main():
                 """, unsafe_allow_html=True)
             
             with col3:
-                # Formatar valor_total de forma segura
-                try:
-                    # Tentar converter para float primeiro
-                    valor_num = float(valor_total)
-                    valor_formatado = f"R$ {valor_num:,.0f}"
-                except (ValueError, TypeError):
-                    # Se não conseguir converter, mostrar sem formatação
-                    valor_formatado = f"R$ {valor_total}"
+                valor_total = 0  # Removido o cálculo de valor estimado
+                valor_formatado = "R$ 0"
                 
                 st.markdown(f"""
                 <div class="metric-card">
@@ -1055,13 +1304,11 @@ def main():
             col_chart1, col_chart2 = st.columns(2)
             
             with col_chart1:
-                # Gráfico de Status
                 st.markdown('<h3 style="color: #1e293b; font-size: 1.4rem; font-weight: 700; margin: 30px 0 20px 0;">Análise Visual</h3>', unsafe_allow_html=True)
             
             col_chart1, col_chart2 = st.columns(2)
             
             with col_chart1:
-                # Removemos o h3 de dentro da div para eliminar a barra branca
                 st.markdown('<div class="chart-container">', unsafe_allow_html=True)
                 st.markdown('<p style="color: #1e293b; font-size: 1.1rem; font-weight: 700; margin-bottom: 10px;">📈 Distribuição por Status</p>', unsafe_allow_html=True)
                 
@@ -1072,7 +1319,6 @@ def main():
                         values=status_counts.values,
                         color_discrete_sequence=['#522b7b', '#8b5cf6', '#6366f1', '#10b981', '#f59e0b', '#ef4444']
                     )
-                    # O SEGREDO: t=0 remove o espaço branco no topo do gráfico
                     fig_status.update_layout(
                         margin=dict(t=0, b=0, l=0, r=0),
                         paper_bgcolor='rgba(0,0,0,0)',
@@ -1095,7 +1341,6 @@ def main():
                         orientation='h',
                         color_discrete_sequence=['#8b5cf6']
                     )
-                    # ZERANDO MARGENS PARA ELIMINAR ESPAÇOS BRANCOS
                     fig_origem.update_layout(
                         margin=dict(t=0, b=0, l=10, r=10),
                         paper_bgcolor='rgba(0,0,0,0)',
@@ -1138,42 +1383,54 @@ def main():
             
             with col_insight2:
                 st.markdown('<div class="chart-container">', unsafe_allow_html=True)
-                st.markdown('<h3 style="color: #1e293b; font-size: 1rem; margin-bottom: 15px;">🏢 Top Empresas</h3>', unsafe_allow_html=True)
+                st.markdown('<h3 style="color: #1e293b; font-size: 1rem; margin-bottom: 15px;">🏢 Top Entes</h3>', unsafe_allow_html=True)
                 
-                if 'Empresa_Atual' in df_leads.columns:
-                    top_empresas = df_leads['Empresa_Atual'].value_counts().head(5)
-                    for empresa, count in top_empresas.items():
-                        porcentagem = (count / total * 100) if total > 0 else 0
-                        st.markdown(f"""
-                        <div style="margin-bottom: 10px;">
-                            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                                <span style="font-weight: 500; color: #475569; max-width: 70%; overflow: hidden; text-overflow: ellipsis;">{empresa}</span>
-                                <span style="font-weight: 600; color: #522b7b;">{count}</span>
+                if 'Ente' in df_leads.columns:
+                    # Separar entes múltiplos e contar
+                    all_entes = []
+                    for ente_str in df_leads['Ente'].dropna():
+                        # Se o ente contém múltiplos valores separados por vírgula
+                        if ',' in str(ente_str):
+                            entes = [e.strip() for e in str(ente_str).split(',')]
+                            all_entes.extend(entes)
+                        else:
+                            all_entes.append(str(ente_str).strip())
+                    
+                    # Contar frequência
+                    if all_entes:
+                        from collections import Counter
+                        ente_counter = Counter(all_entes)
+                        top_entes = ente_counter.most_common(5)
+                        
+                        for ente, count in top_entes:
+                            porcentagem = (count / total * 100) if total > 0 else 0
+                            st.markdown(f"""
+                            <div style="margin-bottom: 10px;">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                    <span style="font-weight: 500; color: #475569; max-width: 70%; overflow: hidden; text-overflow: ellipsis;">{ente}</span>
+                                    <span style="font-weight: 600; color: #522b7b;">{count}</span>
+                                </div>
+                                <div style="background-color: #f1f5f9; height: 8px; border-radius: 4px;">
+                                    <div style="background-color: #10b981; width: {porcentagem}%; height: 100%; border-radius: 4px;"></div>
+                                </div>
                             </div>
-                            <div style="background-color: #f1f5f9; height: 8px; border-radius: 4px;">
-                                <div style="background-color: #10b981; width: {porcentagem}%; height: 100%; border-radius: 4px;"></div>
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
+                            """, unsafe_allow_html=True)
+                    else:
+                        st.info("Sem dados de entes")
                 else:
-                    st.info("Sem dados de empresas")
+                    st.info("Sem dados de entes")
                 
                 st.markdown('</div>', unsafe_allow_html=True)
             
             with col_insight3:
                 st.markdown('<div class="chart-container">', unsafe_allow_html=True)
-                st.markdown('<h3 style="color: #1e293b; font-size: 1rem; margin-bottom: 15px;">🏛️ Top Tipo de Cliente</h3>', unsafe_allow_html=True)
+                st.markdown('<h3 style="color: #1e293b; font-size: 1rem; margin-bottom: 15px;">🎯 Top Produtos de Interesse</h3>', unsafe_allow_html=True)
                 
-                if 'Tipo_Cliente' in df_leads.columns:
-                    # Substituir valores vazios/NaN por "Não Informado"
-                    df_leads_filtrado = df_leads.copy()
-                    df_leads_filtrado['Tipo_Cliente'] = df_leads_filtrado['Tipo_Cliente'].fillna('Não Informado')
-                    df_leads_filtrado['Tipo_Cliente'] = df_leads_filtrado['Tipo_Cliente'].replace('', 'Não Informado')
-                    
-                    tipo_cliente_counts = df_leads_filtrado['Tipo_Cliente'].value_counts().head(5)
+                if 'Produto_Interesse' in df_leads.columns:
+                    produto_counts = df_leads['Produto_Interesse'].value_counts().head(5)
                     colors = ['#ef4444', '#f59e0b', '#3b82f6', '#10b981', '#8b5cf6']
                     
-                    for i, (tipo_cliente, count) in enumerate(tipo_cliente_counts.items()):
+                    for i, (produto, count) in enumerate(produto_counts.items()):
                         color = colors[i] if i < len(colors) else '#94a3b8'
                         porcentagem = (count / total * 100) if total > 0 else 0
                         
@@ -1182,7 +1439,7 @@ def main():
                             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
                                 <span style="display: flex; align-items: center;">
                                     <div style="width: 12px; height: 12px; border-radius: 50%; background-color: {color}; margin-right: 10px;"></div>
-                                    <span style="font-weight: 600; color: #475569;">{tipo_cliente}</span>
+                                    <span style="font-weight: 600; color: #475569;">{produto}</span>
                                 </span>
                                 <span style="font-weight: 700; color: #1e293b;">{porcentagem:.0f}%</span>
                             </div>
@@ -1193,7 +1450,7 @@ def main():
                         </div>
                         """, unsafe_allow_html=True)
                 else:
-                    st.info("Sem dados de tipo de cliente")
+                    st.info("Sem dados de produtos")
                 
                 st.markdown('</div>', unsafe_allow_html=True)
         
@@ -1230,8 +1487,8 @@ def main():
             with m1: render_metric_card("TOTAL DE LEADS", f"{total_leads}")
             with m2: render_metric_card("CARGO MAIS COMUM", 
                 df_leads['Cargo_Funcao'].value_counts().index[0] if 'Cargo_Funcao' in df_leads.columns else "N/A")
-            with m3: render_metric_card("EMPRESA PRINCIPAL",
-                df_leads['Empresa_Atual'].value_counts().index[0] if 'Empresa_Atual' in df_leads.columns else "N/A")
+            with m3: render_metric_card("ENTE PRINCIPAL",
+                df_leads['Ente'].value_counts().index[0] if 'Ente' in df_leads.columns else "N/A")
             with m4: render_metric_card("CIDADE LÍDER",
                 df_leads['Cidade'].value_counts().index[0] if 'Cidade' in df_leads.columns else "N/A")
             
@@ -1286,7 +1543,7 @@ def main():
             if results_count > 0:
                 st.success(f"🔍 **{results_count} leads encontrados**")
                 
-                # Se estiver editando um lead, mostrar formulário de edição COMPLETO
+                # Se estiver editando um lead, mostrar APENAS o formulário de edição
                 if st.session_state.editing_lead:
                     st.markdown('<div class="white-card">', unsafe_allow_html=True)
                     st.subheader("✏️ Editando Lead")
@@ -1359,39 +1616,20 @@ def main():
                                     key="cargo_edit_completo")
                             
                             with col6:
-                                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Empresa/Organização</div>', unsafe_allow_html=True)
-                                empresa_edit = st.text_input("", 
-                                    value=lead_para_editar.get('Empresa_Atual', ''),
-                                    placeholder="Ex: Prefeitura Municipal",
-                                    label_visibility="collapsed", 
-                                    key="empresa_edit_completo")
-                            
-                            col7, col8 = st.columns(2)
-                            
-                            with col7:
-                                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Tipo de Cliente</div>', unsafe_allow_html=True)
-                                tipo_cliente_edit = st.selectbox("", 
-                                    options=[""] + opcoes['tipos_cliente'],
-                                    index=opcoes['tipos_cliente'].index(lead_para_editar.get('Tipo_Cliente', '')) + 1 if lead_para_editar.get('Tipo_Cliente', '') in opcoes['tipos_cliente'] else 0,
-                                    label_visibility="collapsed", 
-                                    key="tipo_cliente_edit_completo")
-                            
-                            with col8:
-                                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Valor Estimado (R$)</div>', unsafe_allow_html=True)
-                                # CORREÇÃO: Converter valor com tratamento de erro
-                                valor_str = lead_para_editar.get('Valor_Estimado', '0.0')
-                                try:
-                                    valor_default = float(valor_str) if valor_str and str(valor_str).strip() else 0.0
-                                except (ValueError, TypeError):
-                                    valor_default = 0.0
+                                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Ente(s)</div>', unsafe_allow_html=True)
+                                # Converter string para lista para o multiselect
+                                ente_str = lead_para_editar.get('Ente', '')
+                                if ente_str:
+                                    # Separar por vírgula e limpar espaços
+                                    entes_existentes = [e.strip() for e in str(ente_str).split(',') if e.strip()]
+                                else:
+                                    entes_existentes = []
                                 
-                                valor_estimado_edit = st.number_input("", 
-                                    min_value=0.0, 
-                                    value=valor_default,
-                                    step=100.0, 
-                                    format="%.2f",
+                                ente_edit = st.multiselect("", 
+                                    options=opcoes['tipos_cliente'],
+                                    default=entes_existentes,
                                     label_visibility="collapsed", 
-                                    key="valor_edit_completo")
+                                    key="ente_edit_completo")
                             
                             # Seção 3: Localização
                             st.markdown("""
@@ -1454,14 +1692,6 @@ def main():
                                     index=opcoes['canais'].index(lead_para_editar.get('Canal_Preferido', '')) + 1 if lead_para_editar.get('Canal_Preferido', '') in opcoes['canais'] else 0,
                                     label_visibility="collapsed", 
                                     key="canal_edit_completo")
-                            
-                            with col14:
-                                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Interesse Principal</div>', unsafe_allow_html=True)
-                                interesse_principal_edit = st.selectbox("", 
-                                    options=[""] + opcoes['interesses'],
-                                    index=opcoes['interesses'].index(lead_para_editar.get('Interesse_Principal', '')) + 1 if lead_para_editar.get('Interesse_Principal', '') in opcoes['interesses'] else 0,
-                                    label_visibility="collapsed", 
-                                    key="interesse_edit_completo")
                             
                             # Seção 5: Status e Classificação
                             st.markdown("""
@@ -1578,44 +1808,67 @@ def main():
                                 height=100, 
                                 key="obs_edit_completo")
                             
-                            # CORREÇÃO: Adicionar st.form_submit_button() no nível do formulário
+                            # Botões de ação DENTRO do form
                             col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
                             with col_btn2:
                                 col_salvar, col_cancelar = st.columns(2)
                                 with col_salvar:
                                     salvar_edicao = st.form_submit_button("💾 Salvar Alterações", use_container_width=True)
                                 with col_cancelar:
-                                    if st.form_submit_button("❌ Cancelar", use_container_width=True):
-                                        st.session_state.editing_lead = None
-                                        st.rerun()
+                                    cancelar_btn = st.form_submit_button("❌ Cancelar", use_container_width=True)
                             
+                            # PROCESSAMENTO DO FORMULÁRIO DENTRO DO BLOCO with st.form()
                             if salvar_edicao:
+                                # VALIDAÇÃO: Verificar se o e-mail foi alterado para um que já existe (exceto se for o mesmo lead)
+                                email_atual = lead_para_editar.get('Email', '')
+                                novo_email = email_edit
+
+                                if novo_email and novo_email.lower() != email_atual.lower():
+                                    resultado_verificacao = verificar_email_existente(novo_email)
+                
+                                    if resultado_verificacao['existe']:
+                                        # Verificar se não é o mesmo lead (por ID)
+                                        if resultado_verificacao.get('id') != st.session_state.editing_lead:
+                                            st.error(f"""
+                                            ⚠️ **E-MAIL JÁ CADASTRADO!**
+                            
+                                            O e-mail **{novo_email}** já está cadastrado para outro lead.
+                            
+                                            **Lead existente:**
+                                            - **Nome:** {resultado_verificacao.get('nome', 'Não informado')}
+                                            - **ID:** {resultado_verificacao.get('id', 'Não informado')}
+                                            - **Ente:** {resultado_verificacao.get('empresa', 'Não informado')}
+                            
+                                            Por favor, use um e-mail diferente ou edite o lead existente.
+                                            """)
+                                            st.stop()
+
                                 from datetime import datetime
                                 # Converter datas para string
                                 data_proximo_str_edit = ""
                                 data_convertido_str_edit = ""
-                                
+                                            
                                 if data_proximo_contato_edit:
                                     data_proximo_str_edit = data_proximo_contato_edit.strftime("%Y-%m-%d")
                                 if data_convertido_edit:
                                     data_convertido_str_edit = data_convertido_edit.strftime("%Y-%m-%d")
                                 
+                                # Converter lista de entes para string separada por vírgula
+                                ente_str_edit = ", ".join(ente_edit) if ente_edit else ""
+                                            
                                 dados_atualizados = {
                                     'ID': st.session_state.editing_lead,
                                     'Nome': nome_edit,
                                     'Email': email_edit,
-                                    'CPF': limpar_numeros(cpf_edit) if cpf_edit else '',  # APENAS NÚMEROS
-                                    'Telefone': limpar_numeros(telefone_edit) if telefone_edit else '',  # APENAS NÚMEROS
+                                    'CPF': limpar_numeros(cpf_edit) if cpf_edit else '',
+                                    'Telefone': limpar_numeros(telefone_edit) if telefone_edit else '',
                                     'Cargo_Funcao': cargo_edit if cargo_edit else '',
-                                    'Empresa_Atual': empresa_edit if empresa_edit else '',
-                                    'Tipo_Cliente': tipo_cliente_edit if tipo_cliente_edit else '',
-                                    'Valor_Estimado': valor_estimado_edit if valor_estimado_edit else 0.0,
+                                    'Ente': ente_str_edit,
                                     'Estado': estado_edit if estado_edit else '',
                                     'Cidade': cidade_edit if cidade_edit else '',
                                     'Origem_Lead': origem_lead_edit if origem_lead_edit else '',
                                     'Produto_Interesse': produto_interesse_edit if produto_interesse_edit else '',
                                     'Canal_Preferido': canal_preferido_edit if canal_preferido_edit else '',
-                                    'Interesse_Principal': interesse_principal_edit if interesse_principal_edit else '',
                                     'Status': status_edit if status_edit else 'Novo',
                                     'Classificacao': classificacao_edit if classificacao_edit else '',
                                     'Atribuido_A': atribuido_a_edit if atribuido_a_edit else '',
@@ -1627,27 +1880,31 @@ def main():
                                     'Ultimo_Contato': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                                     'Ultima_Acao': 'Edição completa via sistema'
                                 }
-                                
+                                            
                                 sucesso = atualizar_lead_no_google_sheets(st.session_state.editing_lead, dados_atualizados)
                                 if sucesso:
                                     st.success("✅ Lead atualizado com sucesso!")
                                     st.session_state.editing_lead = None
                                     st.rerun()
-                    
+
+                            if cancelar_btn:
+                                st.session_state.editing_lead = None                        
+                                st.rerun()
+
                     st.markdown('</div>', unsafe_allow_html=True)
-                
-                # Se estiver confirmando exclusão
+                    
+                # Se estiver confirmando exclusão, mostrar APENAS a confirmação
                 elif st.session_state.delete_confirm:
                     st.markdown('<div class="white-card">', unsafe_allow_html=True)
                     st.warning(f"⚠️ **Tem certeza que deseja excluir o lead com ID {st.session_state.delete_confirm}?**")
-                    
+                            
                     lead_para_excluir = df_leads[df_leads['ID'] == st.session_state.delete_confirm]
                     if not lead_para_excluir.empty:
                         lead_para_excluir = lead_para_excluir.iloc[0]
                         st.write(f"**Nome:** {lead_para_excluir.get('Nome', 'N/A')}")
                         st.write(f"**E-mail:** {lead_para_excluir.get('Email', 'N/A')}")
-                        st.write(f"**Empresa:** {lead_para_excluir.get('Empresa_Atual', 'N/A')}")
-                    
+                        st.write(f"**Ente:** {lead_para_excluir.get('Ente', 'N/A')}")
+                            
                     col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
                     with col_btn2:
                         col_excluir, col_cancelar = st.columns(2)
@@ -1662,15 +1919,12 @@ def main():
                             if st.button("↩️ Cancelar", use_container_width=True):
                                 st.session_state.delete_confirm = None
                                 st.rerun()
-                    
+                        
                     st.markdown('</div>', unsafe_allow_html=True)
-                
-                # Mostrar tabela normal
-                else:
-                    # Adicionar colunas de ações
-                    filtered_df = filtered_df.copy()
                     
-                    # Criar DataFrame para exibição com ações
+                # Se NÃO estiver editando nem excluindo, mostrar a tabela normal
+                else:
+                    # Mostrar tabela com os leads
                     st.dataframe(filtered_df, use_container_width=True, hide_index=True, height=400)
                     
                     # Controles de ação abaixo da tabela
@@ -1690,7 +1944,7 @@ def main():
                             # Formato: "Nome Completo - email@exemplo.com (ID: L123)"
                             display_text = f"{nome} - {email} (ID: {lead_id})"
                             opcoes_leads.append(display_text)
-                        
+                            
                         lead_selecionado_display = st.selectbox(
                             "", 
                             options=opcoes_leads, 
@@ -1721,22 +1975,8 @@ def main():
                             if lead_id_selecionado:
                                 st.session_state.delete_confirm = lead_id_selecionado
                                 st.rerun()
-                
-            else:
-                st.warning("Nenhum lead encontrado")
-            
-        else:
-            st.markdown('<div class="white-card" style="padding: 40px 20px; text-align: center;">', unsafe_allow_html=True)
-            st.markdown('<div style="font-size: 48px; margin-bottom: 20px; color: #cbd5e1;">📭</div>', unsafe_allow_html=True)
-            st.markdown('<h3 style="color: #475569; font-size: 18px; margin-bottom: 10px;">Nenhum lead cadastrado</h3>', unsafe_allow_html=True)
-            st.markdown('<p style="color: #64748b; font-size: 14px;">Use a página "Cadastrar" para adicionar novos leads ao sistema.</p>', unsafe_allow_html=True)
-            
-            if st.button("➕ Ir para Cadastrar", type="primary"):
-                st.session_state.menu_atual = "Cadastrar"
-                st.rerun()
-                
-            st.markdown('</div>', unsafe_allow_html=True)
-        
+
+                                           
     elif menu == "Cadastrar":
 
         st.markdown('<div class="white-card full-width-form">', unsafe_allow_html=True)
@@ -1778,27 +2018,106 @@ def main():
                 <h3 style="color: #1e293b; font-size: 20px; font-weight: 700; margin: 0;">Dados Profissionais</h3>
             </div>
             """, unsafe_allow_html=True)
-            
+
             col5, col6 = st.columns(2)
-            
+
             with col5:
                 st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Cargo/Função</div>', unsafe_allow_html=True)
                 cargo = st.selectbox("", options=[""] + opcoes['cargos'], index=0, label_visibility="collapsed", key="cargo_input")
-            
+
             with col6:
-                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Empresa/Organização</div>', unsafe_allow_html=True)
-                empresa = st.text_input("", placeholder="Ex: Prefeitura Municipal", label_visibility="collapsed", key="empresa_input")
-            
-            col7, col8 = st.columns(2)
-            
-            with col7:
-                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Tipo de Cliente</div>', unsafe_allow_html=True)
-                tipo_cliente = st.selectbox("", options=[""] + opcoes['tipos_cliente'], index=0, label_visibility="collapsed", key="tipo_cliente_input")
-            
-            with col8:
-                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Valor Estimado (R$)</div>', unsafe_allow_html=True)
-                valor_estimado = st.number_input("", min_value=0.0, value=0.0, step=100.0, format="%.2f", label_visibility="collapsed", key="valor_input")
-            
+                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Ente(s) <span style="color: #dc2626;">*</span></div>', unsafe_allow_html=True)
+    
+                # CSS para estilizar o multiselect
+                st.markdown("""
+                <style>
+                /* Container do multiselect */
+                .stMultiSelect [data-baseweb="tag"] {
+                    display: inline-flex !important;
+                    align-items: center !important;
+                    height: 28px !important;
+                    margin: 2px 4px 2px 0 !important;
+                    background-color: white !important;
+                }
+    
+                /* Quando o multiselect está em foco */
+                .stMultiSelect > div > div:focus-within {
+                    border-color: #8b5cf6 !important;
+                    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1) !important;
+                }
+    
+                /* Tags dos itens selecionados */
+                .stMultiSelect [data-baseweb="tag"] {
+                    background-color: rgba(139, 92, 246, 0.1) !important;
+                    color: #7c3aed !important;
+                    border-color: #8b5cf6 !important;
+                    border-radius: 6px !important;
+                    font-weight: 500 !important;
+                    margin: 2px !important;
+                }
+    
+                /* Dropdown menu */
+                div[data-baseweb="select"] [role="listbox"] {
+                    border-radius: 8px !important;
+                    border: 1px solid #e2e8f0 !important;
+                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
+                }
+    
+                /* Itens no dropdown */
+                div[data-baseweb="select"] [role="option"] {
+                    padding: 10px 12px !important;
+                }
+    
+                /* Itens selecionados no dropdown */
+                div[data-baseweb="select"] [role="option"][aria-selected="true"] {
+                    background-color: rgba(139, 92, 246, 0.1) !important;
+                    color: #7c3aed !important;
+                }
+                </style>
+                """, unsafe_allow_html=True)
+    
+                # Lista de entes
+                entes_disponiveis = [
+                    "Câmara",
+                    "Secretaria",
+                    "Defensoria Pública", 
+                    "Tribunal de Contas",
+                    "Estatais",
+                    "Sociedade Civil",
+                    "Judiciário",
+                    "Ministério Público"
+                ]
+    
+                # Multiselect
+                entes_selecionados = st.multiselect(
+                    "",
+                    options=entes_disponiveis,
+                    label_visibility="collapsed",
+                    key="entes_multiselect"
+                )
+    
+                # Mostrar contador
+                if entes_selecionados:
+                    st.markdown(f'''
+                    <div style="
+                        display: flex;
+                        align-items: center;
+                        justify-content: space-between;
+                        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+                        border: 1px solid #e2e8f0;
+                        border-radius: 8px;
+                        padding: 8px 12px;
+                        margin-top: 8px;
+                    ">
+                        <span style="color: #475569; font-size: 13px; font-weight: 600;">
+                            ✅ {len(entes_selecionados)} ente(s) selecionado(s)
+                        </span>
+                        <span style="color: #64748b; font-size: 13px;">
+                            {', '.join(entes_selecionados)}
+                        </span>
+                    </div>
+                    ''', unsafe_allow_html=True)
+                
             # Seção 3: Localização
             st.markdown("""
             <div style="display: flex; align-items: center; gap: 12px; margin: 40px 0 30px 0; padding-bottom: 15px; border-bottom: 2px solid #f1f5f9;">
@@ -1849,10 +2168,6 @@ def main():
             with col13:
                 st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Canal Preferido</div>', unsafe_allow_html=True)
                 canal_preferido = st.selectbox("", options=[""] + opcoes['canais'], index=0, label_visibility="collapsed", key="canal_input")
-            
-            with col14:
-                st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Interesse Principal</div>', unsafe_allow_html=True)
-                interesse_principal = st.selectbox("", options=[""] + opcoes['interesses'], index=0, label_visibility="collapsed", key="interesse_input")
             
             # Seção 5: Status e Classificação
             st.markdown("""
@@ -1937,22 +2252,21 @@ def main():
             # Importar datetime ANTES de qualquer uso
             from datetime import datetime
             
-            # Validação SIMPLES
+            # Validação
             if not nome or not email:
                 st.error("❌ **Campos obrigatórios:** Nome e e-mail são necessários!")
             elif not estado or estado.strip() == "":
                 st.error("❌ **Campo obrigatório:** Selecione um Estado!")
             elif not cidade_selecionada or cidade_selecionada.strip() == "":
                 st.error("❌ **Campo obrigatório:** Digite a Cidade!")
-            
+            elif not ente:
+                st.error("❌ **Campo obrigatório:** Selecione pelo menos um Ente!")
             # VALIDAÇÃO DE CPF (apenas números)
             elif cpf and not cpf.replace('.', '').replace('-', '').replace(' ', '').isdigit():
                 st.error("❌ **CPF inválido:** Digite apenas números!")
-            
             # VALIDAÇÃO DE TELEFONE (apenas números)
             elif telefone and not telefone.replace('(', '').replace(')', '').replace(' ', '').replace('-', '').replace('+', '').isdigit():
                 st.error("❌ **Telefone inválido:** Digite apenas números!")
-            
             else:
                 # GERAR O ID DO LEAD
                 lead_id = f"L{datetime.now().strftime('%Y%m%d%H%M%S')}"
@@ -1974,23 +2288,23 @@ def main():
                 except NameError:
                     pass  # Variável não definida, mantém string vazia
                 
+                # Converter lista de entes para string separada por vírgula
+                ente_str = ", ".join(ente) if ente else ""
+                
                 # Criar dicionário com os dados
                 novo_lead = {
                     'ID': lead_id,
                     'Nome': nome,
                     'Email': email,
-                    'CPF': limpar_numeros(cpf) if cpf else '',  # APENAS NÚMEROS
-                    'Telefone': limpar_numeros(telefone) if telefone else '',  # APENAS NÚMEROS
+                    'CPF': limpar_numeros(cpf) if cpf else '',
+                    'Telefone': limpar_numeros(telefone) if telefone else '',
                     'Cargo_Funcao': cargo if cargo else '',
-                    'Empresa_Atual': empresa if empresa else '',
-                    'Tipo_Cliente': tipo_cliente if tipo_cliente else '',
-                    'Valor_Estimado': valor_estimado if valor_estimado else 0.0,
+                    'Ente': ente_str,
                     'Estado': estado if estado else '',
                     'Cidade': cidade_selecionada if cidade_selecionada else '',
                     'Origem_Lead': origem_lead if origem_lead else '',
                     'Produto_Interesse': produto_interesse if produto_interesse else '',
                     'Canal_Preferido': canal_preferido if canal_preferido else '',
-                    'Interesse_Principal': interesse_principal if interesse_principal else '',
                     'Status': status if status else 'Novo',
                     'Classificacao': classificacao if classificacao else '',
                     'Atribuido_A': atribuido_a if atribuido_a else '',
@@ -1999,8 +2313,8 @@ def main():
                     'Data_Convertido': data_convertido_str,
                     'Receber_Novidades': receber_novidades if receber_novidades else '',
                     'Observacoes': observacoes if observacoes else '',
-                    'Data_Cadastro': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),  # <-- USA datetime
-                    'Ultimo_Contato': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),  # <-- USA datetime
+                    'Data_Cadastro': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    'Ultimo_Contato': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     'Ultima_Acao': 'Cadastro via formulário'
                 }
                 
@@ -2017,7 +2331,454 @@ def main():
                     if st.button("➕ Cadastrar Novo Lead", key="novo_lead_btn", use_container_width=True):
                         st.rerun()
                     st.markdown('</div>', unsafe_allow_html=True)
+
+    elif menu == "Cursos":
+
+        st.markdown('<div class="white-card">', unsafe_allow_html=True)
+
+        st.markdown("""
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 30px;">
+            <div style="background: linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%); color: white; width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px;">🎓</div>
+            <div>
+                <h1 style="color: #1e293b; font-size: 28px; font-weight: 800; margin: 0;">Gestão de Cursos</h1>
+                <p style="color: #64748b; font-size: 14px; margin: 5px 0 0 0;">Análise automática de participantes e desistências</p>
+            </div>            
+        """, unsafe_allow_html=True)
+
+        # ==================== CARREGAR DADOS CORRETAMENTE ====================
+        with st.spinner("🔄 Carregando dados em tempo real..."):
+            df_leads = load_leads()
     
+            # DESEMPACOTAR os 4 DataFrames!
+            df_agosto, df_novembro, df_desistencias, df_desistencias_historico = importar_dados_cursos_automatico()
+    
+            # Juntar os dados de participantes (Agosto + Novembro)
+            df_cursos_combinados = pd.concat([df_agosto, df_novembro], ignore_index=True)
+    
+            # Verificar se tem coluna 'PARTICIPOU', se não, criar baseada em alguma lógica
+            if 'PARTICIPOU' not in df_cursos_combinados.columns:
+                df_cursos_combinados['PARTICIPOU'] = 'SIM'
+
+        # ==================== VERIFICAR SE TEM DADOS ====================
+        # Verificar se há dados em qualquer uma das planilhas
+        tem_dados_cursos = not df_cursos_combinados.empty
+        tem_dados_desistencias = not df_desistencias.empty or not df_desistencias_historico.empty
+    
+        if not tem_dados_cursos and not tem_dados_desistencias:
+            st.info("""
+            ## 📭 Nenhum dado de cursos encontrado
+
+            O sistema procurou automaticamente nas abas:
+
+            ### 🎯 Abas de Participantes:
+            - **"agosto"** (antiga "11 e 12 agosto")
+            - **"novembro"** (antiga "17 e 18 Novembro")
+
+            ### 🚫 Abas de Desistências:
+            - **"desistencia_historico"** (antiga "Desistências - Histórico")
+            - **"desistencia"** (antiga "Desistências")
+
+            ### 🔍 Verifique:
+            1. Se o arquivo **planilha.xlsx** está na pasta do projeto
+            2. Se os nomes das abas estão: **agosto, novembro, desistencia, desistencia_historico**
+            3. Se há dados nas abas
+            """)
+
+            st.markdown('</div>', unsafe_allow_html=True)
+            return
+
+        # ==================== CÁLCULOS PARA VISÃO GERAL ====================
+        # 1. Total de registros únicos nas 4 planilhas
+        # Juntar todas as 4 planilhas
+        todas_planilhas = pd.concat([
+            df_agosto, 
+            df_novembro, 
+            df_desistencias, 
+            df_desistencias_historico
+        ], ignore_index=True)
+    
+        # Remover duplicatas baseado em email (ou outra coluna única)
+        # Ajuste a coluna conforme seus dados (ex: 'EMAIL', 'CPF', 'NOME')
+        coluna_unica = None
+        for col in ['EMAIL', 'CPF', 'NOME']:
+            if col in todas_planilhas.columns:
+                coluna_unica = col
+                break
+    
+        if coluna_unica:
+            total_registros = todas_planilhas[coluna_unica].nunique()
+        else:
+            # Se não encontrar coluna única, conta registros sem remover duplicatas
+            total_registros = len(todas_planilhas)
+    
+        # 2. Participantes (já calculado corretamente)
+        if 'PARTICIPOU' in df_cursos_combinados.columns:
+            participantes = len(df_cursos_combinados[df_cursos_combinados['PARTICIPOU'] == 'SIM'])
+        else:
+            participantes = len(df_cursos_combinados)
+    
+        # 3. Desistências: soma de registros das duas planilhas de desistência
+        # MAS EXCLUINDO quem já participou (Agosto ou Novembro)
+
+        # Criar conjunto de pessoas que participaram (baseado em coluna única)
+        if coluna_unica:
+            # Pessoas que participaram (Agosto + Novembro)
+            participantes_unicos = set(pd.concat([df_agosto, df_novembro], ignore_index=True)[coluna_unica].dropna().unique())
+    
+            # Pessoas nas planilhas de desistência
+            desistentes_agosto = set(df_agosto[df_agosto['PARTICIPOU'] == 'NÃO'][coluna_unica].dropna().unique()) if 'PARTICIPOU' in df_agosto.columns else set()
+            desistentes_novembro = set(df_novembro[df_novembro['PARTICIPOU'] == 'NÃO'][coluna_unica].dropna().unique()) if 'PARTICIPOU' in df_novembro.columns else set()
+    
+            desistentes_desistencias = set(df_desistencias[coluna_unica].dropna().unique()) if coluna_unica in df_desistencias.columns else set()
+            desistentes_historico = set(df_desistencias_historico[coluna_unica].dropna().unique()) if coluna_unica in df_desistencias_historico.columns else set()
+    
+            # Juntar TODOS os desistentes
+            todos_desistentes = desistentes_agosto.union(
+                desistentes_novembro,
+                desistentes_desistencias,
+                desistentes_historico
+            )
+    
+            # REMOVER quem já participou
+            desistentes_nao_participantes = todos_desistentes - participantes_unicos
+    
+            # Contar desistências
+            desistencias = len(desistentes_nao_participantes)
+        else:
+            # Se não tem coluna única, usar lógica simplificada
+            # Contar desistentes das planilhas específicas
+            desistencias = len(df_desistencias) + len(df_desistencias_historico)
+    
+        # 4. Municípios únicos nas 4 planilhas
+        municipios_todas_planilhas = pd.concat([
+            df_agosto[['MUNICIPIO']] if 'MUNICIPIO' in df_agosto.columns else pd.DataFrame(),
+            df_novembro[['MUNICIPIO']] if 'MUNICIPIO' in df_novembro.columns else pd.DataFrame(),
+            df_desistencias[['MUNICIPIO']] if 'MUNICIPIO' in df_desistencias.columns else pd.DataFrame(),
+            df_desistencias_historico[['MUNICIPIO']] if 'MUNICIPIO' in df_desistencias_historico.columns else pd.DataFrame()
+        ], ignore_index=True)
+    
+        if not municipios_todas_planilhas.empty and 'MUNICIPIO' in municipios_todas_planilhas.columns:
+            municipios = municipios_todas_planilhas['MUNICIPIO'].nunique()
+        else:
+            municipios = 0
+
+        # ==================== MÉTRICAS PRINCIPAIS ====================
+        st.markdown("### 📊 Visão Geral")
+
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            st.metric("Total Registros", total_registros)
+
+        with col2:
+            st.metric("Participantes", participantes)
+
+        with col3:
+            st.metric("Desistências", desistencias)
+
+        with col4:
+            st.metric("Municípios", municipios)
+
+
+        # ==================== TABS DE ANÁLISE ====================
+        tab1, tab2 = st.tabs([
+            "👥 Participantes",  
+            "🚫 Desistências"  
+        ])
+    
+        with tab1:
+            st.markdown("#### 👥 Participantes dos Cursos")
+    
+            if not df_cursos_combinados.empty:
+                # Mostrar apenas quem participou (PARTICIPOU == 'SIM')
+                if 'PARTICIPOU' in df_cursos_combinados.columns:
+                    df_participantes = df_cursos_combinados[df_cursos_combinados['PARTICIPOU'] == 'SIM']
+                else:
+                    df_participantes = df_cursos_combinados
+
+                # ==================== FILTRO COM ESTILO ALINHADO ====================
+                st.markdown("##### 🔍 Pesquisar em qualquer campo")
+        
+                # Inicializar estado da sessão
+                if 'pesquisa_participantes' not in st.session_state:
+                    st.session_state.pesquisa_participantes = ""
+        
+                # CSS para alinhamento perfeito
+                st.markdown("""
+                <style>
+                    /* Container principal flex */
+                    .search-container {
+                        display: flex;
+                        align-items: center;
+                        gap: 10px;
+                        margin-bottom: 1rem;
+                    }
+            
+                    /* Campo de pesquisa ocupa mais espaço */
+                    .search-input {
+                        flex-grow: 1;
+                    }
+            
+                    /* Botão com altura fixa */
+                    .search-button {
+                        flex-shrink: 0;
+                        width: 80px;
+                    }
+            
+                    /* Esconde "Press Enter to apply" */
+                    div[data-testid="InputInstructions"] {
+                        display: none !important;
+                    }
+            
+                    /* Ajusta altura do campo */
+                    div[data-testid="stTextInput"] {
+                        min-height: 52px;
+                    }
+            
+                    /* Alinha verticalmente o conteúdo do campo */
+                    div[data-testid="stTextInput"] > div > div {
+                        align-items: center;
+                    }
+                </style>
+                """, unsafe_allow_html=True)
+        
+                # HTML para layout perfeito
+                st.markdown("""
+                <div class="search-container">
+                    <div class="search-input">
+                """, unsafe_allow_html=True)
+        
+                # Campo de pesquisa
+                pesquisa = st.text_input(
+                    "Digite para pesquisar em TODAS as colunas:",
+                    placeholder="Ex: São Paulo, João, Consultor X...",
+                    value=st.session_state.pesquisa_participantes,
+                    key="input_pesquisa_participantes_tab1",
+                    label_visibility="collapsed"
+                )
+        
+                st.markdown("</div><div class='search-button'>", unsafe_allow_html=True)
+        
+                # Botão Limpar
+                if st.button("🧹 Limpar", 
+                            key="limpar_participantes_tab1", 
+                            use_container_width=True):
+                    st.session_state.pesquisa_participantes = ""
+                    st.rerun()
+        
+                st.markdown("</div></div>", unsafe_allow_html=True)
+        
+                # Atualizar estado e aplicar filtro em tempo real
+                if pesquisa != st.session_state.pesquisa_participantes:
+                    st.session_state.pesquisa_participantes = pesquisa
+                    # Não precisa de rerun aqui, o filtro será aplicado abaixo
+        
+                # Aplicar filtro universal
+                df_filtrado = df_participantes.copy()
+        
+                if st.session_state.pesquisa_participantes:
+                    # Criar máscara para cada coluna
+                    mascara = pd.Series([False] * len(df_filtrado))
+            
+                    for coluna in df_filtrado.columns:
+                        # Converter para string e fazer busca case-insensitive
+                        if df_filtrado[coluna].dtype == 'object':
+                            mascara_coluna = df_filtrado[coluna].astype(str).str.contains(
+                                st.session_state.pesquisa_participantes, 
+                                case=False, 
+                                na=False
+                            )
+                            mascara = mascara | mascara_coluna
+            
+                    df_filtrado = df_filtrado[mascara]
+                    st.success(f"🔍 **{len(df_filtrado)} resultados para: '{st.session_state.pesquisa_participantes}'**")
+                else:
+                    st.info(f"📋 **{len(df_filtrado)} registros disponíveis**")
+        
+                st.dataframe(
+                    df_filtrado,
+                    use_container_width=True,
+                    height=400,
+                    hide_index=True
+                )
+        
+        
+                # Download button
+                st.markdown("---")
+                csv_data = df_filtrado.to_csv(index=False, encoding='utf-8-sig')
+                st.download_button(
+                    label="📥 Exportar Lista de Participantes",
+                    data=csv_data,
+                    file_name="participantes_cursos.csv",
+                    mime="text/csv",
+                    use_container_width=True
+                )
+        
+            else:
+                st.info("📭 Nenhum participante encontrado.")
+    
+        with tab2:
+            st.markdown("#### 🚫 Desistências - Análise Detalhada")
+    
+            # ==================== COMBINAR DADOS DE DESISTÊNCIAS ====================
+            df_desistencias_combinadas = pd.concat([df_desistencias, df_desistencias_historico], ignore_index=True)
+    
+            if not df_desistencias_combinadas.empty:
+                # ==================== FILTRO COM ESTILO ALINHADO ====================
+                st.markdown("##### 🔍 Pesquisar em qualquer campo")
+        
+                # Inicializar estado da sessão
+                if 'pesquisa_desistencias' not in st.session_state:
+                    st.session_state.pesquisa_desistencias = ""
+        
+                # CSS para alinhamento perfeito
+                st.markdown("""
+                <style>
+                    /* Container principal flex */
+                    .search-container {
+                        display: flex;
+                        align-items: center;
+                        gap: 10px;
+                        margin-bottom: 1rem;
+                    }
+            
+                    /* Campo de pesquisa ocupa mais espaço */
+                    .search-input {
+                        flex-grow: 1;
+                    }
+            
+                    /* Botão com altura fixa */
+                    .search-button {
+                        flex-shrink: 0;
+                        width: 80px;
+                    }
+            
+                    /* Esconde "Press Enter to apply" */
+                    div[data-testid="InputInstructions"] {
+                        display: none !important;
+                    }
+            
+                    /* Ajusta altura do campo */
+                    div[data-testid="stTextInput"] {
+                        min-height: 52px;
+                    }
+            
+                    /* Alinha verticalmente o conteúdo do campo */
+                    div[data-testid="stTextInput"] > div > div {
+                        align-items: center;
+                    }
+                </style>
+                """, unsafe_allow_html=True)
+        
+                # HTML para layout perfeito
+                st.markdown("""
+                <div class="search-container">
+                    <div class="search-input">
+                """, unsafe_allow_html=True)
+        
+                # Campo de pesquisa
+                pesquisa = st.text_input(
+                    "Digite para pesquisar em TODAS as colunas:",
+                    placeholder="Ex: São Paulo, motivo, Consultor Y...",
+                    value=st.session_state.pesquisa_desistencias,
+                    key="input_pesquisa_desistencias_tab2",
+                    label_visibility="collapsed"
+                )
+        
+                st.markdown("</div><div class='search-button'>", unsafe_allow_html=True)
+        
+                # Botão Limpar
+                if st.button("🧹 Limpar", 
+                            key="limpar_desistencias_tab2", 
+                            use_container_width=True):
+                    st.session_state.pesquisa_desistencias = ""
+                    st.rerun()
+        
+                st.markdown("</div></div>", unsafe_allow_html=True)
+        
+                # Atualizar estado
+                if pesquisa != st.session_state.pesquisa_desistencias:
+                    st.session_state.pesquisa_desistencias = pesquisa
+        
+                # ==================== FILTRAR MUNICÍPIOS QUE NÃO PARTICIPARAM ====================
+                df_base = df_desistencias_combinadas.copy()
+        
+                if not df_cursos_combinados.empty and 'MUNICIPIO' in df_cursos_combinados.columns:
+                    # Padronizar nomes dos municípios
+                    df_cursos_combinados['MUNICIPIO_CLEAN'] = df_cursos_combinados['MUNICIPIO'].astype(str).str.strip().str.upper()
+                    df_base['MUNICIPIO_CLEAN'] = df_base['MUNICIPIO'].astype(str).str.strip().str.upper()
+            
+                    # Municípios que participaram
+                    municipios_participantes = set(df_cursos_combinados['MUNICIPIO_CLEAN'].dropna())
+            
+                    # Filtrar desistências: apenas municípios que NÃO participaram
+                    df_base = df_base[~df_base['MUNICIPIO_CLEAN'].isin(municipios_participantes)]
+            
+                    if 'MUNICIPIO_CLEAN' in df_base.columns:
+                        df_base = df_base.drop(columns=['MUNICIPIO_CLEAN'])
+        
+                # ==================== APLICAR FILTRO DE PESQUISA ====================
+                df_filtrado = df_base.copy()
+        
+                if st.session_state.pesquisa_desistencias:
+                    # Criar máscara para cada coluna
+                    mascara = pd.Series([False] * len(df_filtrado))
+            
+                    for coluna in df_filtrado.columns:
+                        # Converter para string e fazer busca case-insensitive
+                        if df_filtrado[coluna].dtype == 'object':
+                            mascara_coluna = df_filtrado[coluna].astype(str).str.contains(
+                                st.session_state.pesquisa_desistencias, 
+                                case=False, 
+                                na=False
+                            )
+                            mascara = mascara | mascara_coluna
+            
+                    df_filtrado = df_filtrado[mascara]
+                    st.success(f"🔍 **{len(df_filtrado)} resultados para: '{st.session_state.pesquisa_desistencias}'**")
+                else:
+                    st.info(f"📋 **{len(df_filtrado)} registros de desistência**")
+        
+                # ==================== MOSTRAR TABELA ====================
+                # Procurar coluna de motivo/objeção
+                colunas_motivo = [col for col in df_filtrado.columns 
+                                if any(termo in col.upper() for termo in ['MOTIVO_OBJECAO', 'MOTIVO', 'OBJEÇÃO', 'JUSTIFICATIVA', 'OBJECAO'])]
+        
+                if colunas_motivo:
+                    coluna_motivo = colunas_motivo[0]
+            
+                    # Mostrar os dados principais
+                    colunas_principais = ['MUNICIPIO', 'ENTE', 'CONSULTOR', 'SDR', coluna_motivo]
+                    colunas_disponiveis = [col for col in colunas_principais if col in df_filtrado.columns]
+            
+                    st.dataframe(
+                        df_filtrado[colunas_disponiveis],
+                        use_container_width=True,
+                        height=400,
+                        hide_index=True
+                    )
+                else:
+                    st.dataframe(
+                        df_filtrado,
+                        use_container_width=True,
+                        height=400,
+                        hide_index=True
+                    )
+        
+                # ==================== BOTÃO DE DOWNLOAD ====================
+                st.markdown("---")
+                csv_data = df_filtrado.to_csv(index=False, encoding='utf-8-sig')
+                st.download_button(
+                    label="📥 Exportar Lista de Desistentes",
+                    data=csv_data,
+                    file_name="desistentes_filtrados.csv",
+                    mime="text/csv",
+                    use_container_width=True
+                )
+    
+            else:
+                st.info("📭 Nenhum registro de desistência encontrado.")              
+
     elif menu == "Relatórios":
         # Relatórios
         st.markdown('<div class="white-card">', unsafe_allow_html=True)
