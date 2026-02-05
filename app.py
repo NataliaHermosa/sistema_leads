@@ -517,7 +517,7 @@ def render_login_page():
                             st.info(f"⚠️ {attempts_left} tentativa(s) restante(s)")
 
 def render_header_menu():
-    """Renderiza o menu superior da aplicação com logout"""
+    
     st.markdown("""
     <style>
     /* Estilo para os botões do menu */
@@ -1085,6 +1085,75 @@ div[data-testid="stCheckbox"]:has(input:checked) label::before {
 }
 </style>
 """, unsafe_allow_html=True)
+
+# ============================================================================
+# 10. CSS — CHECKBOX COM REALCE 
+# ============================================================================
+
+st.markdown("""
+<style>
+/* Realce forte para checkbox selecionado */
+div[data-testid="stCheckbox"]:has(input:checked) label {
+    background-color: #f3e8ff !important;
+    border: 2px solid #8b5cf6 !important;
+    border-radius: 10px !important;
+    padding: 12px 16px !important;
+    margin: 6px 0 !important;
+    font-weight: 700 !important;
+    color: #7c3aed !important;
+    box-shadow: 0 2px 8px rgba(139, 92, 246, 0.2) !important;
+}
+
+/* Checkbox maior e colorido */
+div[data-testid="stCheckbox"] input[type="checkbox"] {
+    transform: scale(1.4) !important;
+    margin-right: 12px !important;
+    accent-color: #7c3aed !important;
+}
+
+/* Adiciona ícone de verificação */
+div[data-testid="stCheckbox"]:has(input:checked) label::before {
+    content: "✅ " !important;
+    margin-right: 8px !important;
+}
+
+/* Label para campo obrigatório */
+.required-field::after {
+    content: " *" !important;
+    color: #dc2626 !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ============================================================================
+# CORREÇÃO DE CONTRASTE PARA MULTISELECT
+# ============================================================================
+
+st.markdown("""
+<style>
+/* USANDO AS CORES DO SEU SISTEMA */
+.stMultiSelect [data-baseweb="tag"] {
+    background-color: rgba(139, 92, 246, 0.1) !important;  /* #8b5cf6 com transparência */
+    color: #5b21b6 !important;  /* Roxo mais escuro */
+    border-color: #8b5cf6 !important;
+    font-weight: 600 !important;
+    border-radius: 6px !important;
+}
+
+.stMultiSelect [data-baseweb="tag"] span {
+    color: #5b21b6 !important;
+}
+
+.stMultiSelect [data-baseweb="tag"] button {
+    color: #5b21b6 !important;
+}
+
+.stMultiSelect [data-baseweb="tag"]:hover {
+    background-color: rgba(139, 92, 246, 0.2) !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 
 # ============================================================================
 # 11. FUNÇÕES DE DADOS
@@ -2044,13 +2113,17 @@ def main():
             total_leads = len(df_leads)
             m1, m2, m3, m4 = st.columns(4)
             
-            with m1: render_metric_card("TOTAL DE LEADS", f"{total_leads}")
-            with m2: render_metric_card("CARGO MAIS COMUM", 
-                df_leads['Cargo_Funcao'].value_counts().index[0] if 'Cargo_Funcao' in df_leads.columns else "N/A")
-            with m3: render_metric_card("ENTE PRINCIPAL",
-                df_leads['Ente'].value_counts().index[0] if 'Ente' in df_leads.columns else "N/A")
-            with m4: render_metric_card("CIDADE LÍDER",
-                df_leads['Cidade'].value_counts().index[0] if 'Cidade' in df_leads.columns else "N/A")
+            with m1: 
+                st.metric("TOTAL DE LEADS", f"{total_leads}")
+            with m2: 
+                cargo_mais_comum = df_leads['Cargo_Funcao'].value_counts().index[0] if 'Cargo_Funcao' in df_leads.columns else "N/A"
+                st.metric("CARGO MAIS COMUM", cargo_mais_comum)
+            with m3: 
+                Empresa_Atual = df_leads['Empresa_Atual'].value_counts().index[0] if 'Empresa_Atual' in df_leads.columns else "N/A"
+                st.metric("EMPRESA ATUAL", Empresa_Atual)
+            with m4: 
+                cidade_lider = df_leads['Cidade'].value_counts().index[0] if 'Cidade' in df_leads.columns else "N/A"
+                st.metric("CIDADE LÍDER", cidade_lider)
             
             # Busca
             st.markdown('<div style="margin-top: 40px;"></div>', unsafe_allow_html=True)
@@ -2586,55 +2659,8 @@ def main():
                 cargo = st.selectbox("", options=[""] + opcoes['cargos'], index=0, label_visibility="collapsed", key="cargo_input")
 
             with col6:
+            # LABEL IGUAL AO OUTRO CAMPO
                 st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Ente(s) <span style="color: #dc2626;">*</span></div>', unsafe_allow_html=True)
-    
-                # CSS para estilizar o multiselect
-                st.markdown("""
-                <style>
-                /* Container do multiselect */
-                .stMultiSelect [data-baseweb="tag"] {
-                    display: inline-flex !important;
-                    align-items: center !important;
-                    height: 28px !important;
-                    margin: 2px 4px 2px 0 !important;
-                    background-color: white !important;
-                }
-    
-                /* Quando o multiselect está em foco */
-                .stMultiSelect > div > div:focus-within {
-                    border-color: #8b5cf6 !important;
-                    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1) !important;
-                }
-    
-                /* Tags dos itens selecionados */
-                .stMultiSelect [data-baseweb="tag"] {
-                    background-color: rgba(139, 92, 246, 0.1) !important;
-                    color: #7c3aed !important;
-                    border-color: #8b5cf6 !important;
-                    border-radius: 6px !important;
-                    font-weight: 500 !important;
-                    margin: 2px !important;
-                }
-    
-                /* Dropdown menu */
-                div[data-baseweb="select"] [role="listbox"] {
-                    border-radius: 8px !important;
-                    border: 1px solid #e2e8f0 !important;
-                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
-                }
-    
-                /* Itens no dropdown */
-                div[data-baseweb="select"] [role="option"] {
-                    padding: 10px 12px !important;
-                }
-    
-                /* Itens selecionados no dropdown */
-                div[data-baseweb="select"] [role="option"][aria-selected="true"] {
-                    background-color: rgba(139, 92, 246, 0.1) !important;
-                    color: #7c3aed !important;
-                }
-                </style>
-                """, unsafe_allow_html=True)
     
                 # Lista de entes
                 entes_disponiveis = [
@@ -2648,7 +2674,7 @@ def main():
                     "Ministério Público"
                 ]
     
-                # Multiselect
+                # MULTISELECT SEM CSS PERSONALIZADO (por enquanto)
                 entes_selecionados = st.multiselect(
                     "",
                     options=entes_disponiveis,
@@ -2656,27 +2682,50 @@ def main():
                     key="entes_multiselect"
                 )
     
-                # Mostrar contador
+                # Mostrar contador (APENAS se algo for selecionado)
                 if entes_selecionados:
                     st.markdown(f'''
                     <div style="
-                        display: flex;
-                        align-items: center;
-                        justify-content: space-between;
-                        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-                        border: 1px solid #e2e8f0;
-                        border-radius: 8px;
-                        padding: 8px 12px;
-                        margin-top: 8px;
-                    ">
-                        <span style="color: #475569; font-size: 13px; font-weight: 600;">
-                            ✅ {len(entes_selecionados)} ente(s) selecionado(s)
-                        </span>
-                        <span style="color: #64748b; font-size: 13px;">
-                            {', '.join(entes_selecionados)}
-                        </span>
+                        background: white;
+                        border: 2px solid #e2e8f0;
+                        border-radius: 10px;
+                        padding: 16px;
+                        margin-top: 15px;
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+                ">
+                    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 15px; padding-bottom: 12px; border-bottom: 2px solid #f1f5f9;">
+                        <div style="background: linear-gradient(135deg, #10b981 0%, #34d399 100%); color: white; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px;">✅</div>
+                        <h3 style="color: #1e293b; font-size: 18px; font-weight: 700; margin: 0;">Entes Selecionados ({len(entes_selecionados)})</h3>
                     </div>
-                    ''', unsafe_allow_html=True)
+        
+                    <div style="
+                        display: flex;
+                        flex-wrap: wrap;
+                        gap: 10px;
+                        padding: 8px;
+                    ">
+                        {''.join([f'''
+                        <div style="
+                            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+                            border: 1px solid #e2e8f0;
+                            border-radius: 8px;
+                            padding: 8px 14px;
+                            display: flex;
+                            align-items: center;
+                            gap: 8px;
+                            min-height: 36px;
+                        ">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="#10b981">
+                                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                            </svg>
+                            <span style="color: #475569; font-weight: 600; font-size: 14px; white-space: nowrap;">
+                                {ente}
+                            </span>
+                        </div>
+                        ''' for ente in entes_selecionados])}
+                    </div>
+                </div>
+                ''', unsafe_allow_html=True)
                 
             # Seção 3: Localização
             st.markdown("""
