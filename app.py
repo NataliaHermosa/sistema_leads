@@ -2684,48 +2684,26 @@ def main():
     
                 # Mostrar contador (APENAS se algo for selecionado)
                 if entes_selecionados:
-                    st.markdown(f'''
-                    <div style="
-                        background: white;
-                        border: 2px solid #e2e8f0;
-                        border-radius: 10px;
-                        padding: 16px;
-                        margin-top: 15px;
-                        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-                ">
-                    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 15px; padding-bottom: 12px; border-bottom: 2px solid #f1f5f9;">
-                        <div style="background: linear-gradient(135deg, #10b981 0%, #34d399 100%); color: white; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px;">✅</div>
-                        <h3 style="color: #1e293b; font-size: 18px; font-weight: 700; margin: 0;">Entes Selecionados ({len(entes_selecionados)})</h3>
-                    </div>
-        
-                    <div style="
-                        display: flex;
-                        flex-wrap: wrap;
-                        gap: 10px;
-                        padding: 8px;
-                    ">
-                        {''.join([f'''
-                        <div style="
-                            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-                            border: 1px solid #e2e8f0;
-                            border-radius: 8px;
-                            padding: 8px 14px;
-                            display: flex;
-                            align-items: center;
-                            gap: 8px;
-                            min-height: 36px;
-                        ">
+                    # HTML simples para cada ente
+                    entes_items = ''.join(f'''
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 14px; margin: 4px; display: inline-flex; align-items: center; gap: 8px;">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="#10b981">
                                 <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
                             </svg>
-                            <span style="color: #475569; font-weight: 600; font-size: 14px; white-space: nowrap;">
-                                {ente}
-                            </span>
+                            <span style="color: #475569; font-weight: 600; font-size: 14px;">{ente}</span>
                         </div>
-                        ''' for ente in entes_selecionados])}
+                    ''' for ente in entes_selecionados)
+    
+                    st.markdown(f'''
+                    <div style="background: white; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; margin-top: 15px;">
+                        <div style="color: #475569; font-weight: 600; font-size: 14px; margin-bottom: 12px;">
+                            ✅ {len(entes_selecionados)} ente(s) selecionado(s)
+                        </div>
+                        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                            {entes_items}
+                        </div>
                     </div>
-                </div>
-                ''', unsafe_allow_html=True)
+                    ''', unsafe_allow_html=True)
                 
             # Seção 3: Localização
             st.markdown("""
