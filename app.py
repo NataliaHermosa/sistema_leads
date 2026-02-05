@@ -8,6 +8,8 @@ import base64
 from PIL import Image
 import os
 from datetime import datetime
+import hashlib
+import time
 
 # ============================================================================
 # 1. CONFIGURAÇÃO, TEMA E CREDENCIAIS
@@ -18,16 +20,25 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Inicializar session_state
+# Inicializar session_state PARA LOGIN E OUTROS ESTADOS 
+if 'authenticated' not in st.session_state:  
+    st.session_state.authenticated = False    
+if 'user_info' not in st.session_state:         
+    st.session_state.user_info = {}           
 if 'opcoes' not in st.session_state:
     st.session_state.opcoes = {'cidades': {}}
 if 'menu_atual' not in st.session_state:
     st.session_state.menu_atual = "Dashboard"
 if 'search_term' not in st.session_state:
     st.session_state.search_term = ""
+if 'login_attempts' not in st.session_state:  
+    st.session_state.login_attempts = 0
+if 'last_attempt_time' not in st.session_state: 
+    st.session_state.last_attempt_time = 0
+
 
 # ================================================
-# ✅ CREDENCIAIS FIXAS (USANDO DICIONÁRIO)
+# 2. CONSTANTES E CONFIGURAÇÕES
 # ================================================
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 SPREADSHEET_ID = "1uZmmdxe1kqlBoOWsx9ghv2xNWLSBqncNiB47MP0qoAU"
@@ -38,7 +49,593 @@ BG_COLOR = "#F0F4FF"
 LOGO_HEIGHT = 80
 
 # ============================================================================
-# 2. FUNÇÕES DE DADOS (GOOGLE SHEETS) 
+# 3. FUNÇÕES DE AUTENTICAÇÃO E LOGIN (ADICIONAR ESTA SEÇÃO INTEIRA)
+# ============================================================================
+def hash_password(password):
+    """Gera hash SHA-256 da senha"""
+    return hashlib.sha256(password.encode()).hexdigest()
+
+def validate_cpf(cpf):
+    """Valida e formata CPF"""
+    # Remove caracteres não numéricos
+    cpf = ''.join(filter(str.isdigit, cpf))
+    
+    # Verifica se tem 11 dígitos
+    if len(cpf) != 11:
+        return False, "CPF deve conter 11 dígitos"
+    
+    # Formata CPF para exibição
+    cpf_formatado = f"{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}"
+    
+    return True, cpf_formatado
+
+def check_login_attempts():
+    """Verifica se há muitas tentativas de login"""
+    current_time = time.time()
+    
+    # Reseta tentativas se passaram 5 minutos
+    if current_time - st.session_state.last_attempt_time > 300:  # 5 minutos
+        st.session_state.login_attempts = 0
+    
+    # Bloqueia após 5 tentativas
+    if st.session_state.login_attempts >= 5:
+        time_left = 300 - (current_time - st.session_state.last_attempt_time)
+        if time_left > 0:
+            minutes = int(time_left // 60)
+            seconds = int(time_left % 60)
+            return False, f"Muitas tentativas de login. Aguarde {minutes}:{seconds:02d} minutos."
+    
+    return True, ""
+
+def verify_credentials(cpf, password):
+    """Verifica credenciais no Google Sheets"""
+    try:
+        # Validar CPF
+        valid, cpf_formatted = validate_cpf(cpf)
+        if not valid:
+            return False, cpf_formatted, None
+        
+        # Carregar dados de usuários
+        creds = get_credentials()
+        if not creds:
+            return False, "Erro nas credenciais do sistema", None
+        
+        client = gspread.authorize(creds)
+        planilha = client.open_by_key(SPREADSHEET_ID)
+        
+        # Tentar ler da aba 'usuarios' (se existir)
+        try:
+            worksheet = planilha.worksheet('usuarios')
+            dados = worksheet.get_all_values()
+            
+            if dados and len(dados) > 1:
+                df_usuarios = pd.DataFrame(dados[1:], columns=dados[0])
+                
+                # Verificar se há colunas necessárias
+                colunas_needed = ['cpf', 'senha_hash', 'nome', 'nivel_acesso', 'ativo']
+                for col in colunas_needed:
+                    if col not in df_usuarios.columns:
+                        # Tentar encontrar por nome similar
+                        for actual_col in df_usuarios.columns:
+                            if col in actual_col.lower():
+                                df_usuarios.rename(columns={actual_col: col}, inplace=True)
+                                break
+                
+                # Procurar usuário
+                for _, user in df_usuarios.iterrows():
+                    user_cpf = str(user.get('cpf', '')).strip()
+                    
+                    # Limpar CPF para comparação
+                    user_cpf_clean = ''.join(filter(str.isdigit, user_cpf))
+                    input_cpf_clean = ''.join(filter(str.isdigit, cpf))
+                    
+                    if user_cpf_clean == input_cpf_clean:
+                        # Verificar se usuário está ativo
+                        ativo = str(user.get('ativo', '')).strip().upper()
+                        if ativo in ['NÃO', 'NAO', 'FALSE', '0', 'INATIVO']:
+                            return False, "Usuário inativo. Contate o administrador.", None
+                        
+                        # Verificar senha
+                        senha_hash_armazenada = str(user.get('senha_hash', '')).strip()
+                        senha_hash_input = hash_password(password)
+                        
+                        if senha_hash_armazenada == senha_hash_input:
+                            # Login bem-sucedido
+                            user_info = {
+                                'cpf': cpf_formatted,
+                                'nome': user.get('nome', 'Usuário'),
+                                'nivel_acesso': user.get('nivel_acesso', 'usuario'),
+                                'email': user.get('email', ''),
+                                'telefone': user.get('telefone', '')
+                            }
+                            return True, "Login realizado com sucesso!", user_info
+                        else:
+                            return False, "Senha incorreta", None
+                
+                return False, "CPF não encontrado", None
+                
+            else:
+                # Se não há usuários cadastrados, criar usuário admin padrão
+                return create_default_admin(cpf_formatted, password)
+                
+        except gspread.exceptions.WorksheetNotFound:
+            # Se a aba 'usuarios' não existe, criar usuário admin padrão
+            return create_default_admin(cpf_formatted, password)
+            
+    except Exception as e:
+        return False, f"Erro no sistema: {str(e)}", None
+
+def create_default_admin(cpf, password):
+    """Cria usuário admin padrão se não existir sistema de usuários"""
+    # CPF e senha do admin padrão
+    ADMIN_CPF = "12345678901"  # Substitua pelo CPF do administrador
+    ADMIN_PASSWORD = "admin123"  # Senha inicial - deve ser alterada
+    
+    # Limpar CPF para comparação
+    input_cpf_clean = ''.join(filter(str.isdigit, cpf))
+    admin_cpf_clean = ''.join(filter(str.isdigit, ADMIN_CPF))
+    
+    if input_cpf_clean == admin_cpf_clean and password == ADMIN_PASSWORD:
+        # Login bem-sucedido com admin padrão
+        user_info = {
+            'cpf': f"{ADMIN_CPF[:3]}.{ADMIN_CPF[3:6]}.{ADMIN_CPF[6:9]}-{ADMIN_CPF[9:]}",
+            'nome': "Administrador",
+            'nivel_acesso': 'admin',
+            'email': 'admin@govacademy.com',
+            'telefone': ''
+        }
+        
+        # Aviso sobre cadastrar usuários
+        st.warning("""
+        ⚠️ **SISTEMA DE USUÁRIOS NÃO CONFIGURADO**
+        
+        Você está usando o usuário admin padrão.
+        
+        **Ações recomendadas:**
+        1. Vá para **Configurações > Usuários**
+        2. Cadastre os usuários do sistema
+        3. Altere a senha do admin
+        4. Remova este usuário padrão quando todos estiverem cadastrados
+        """)
+        
+        return True, "Login realizado com sucesso (admin padrão)", user_info
+    else:
+        return False, "Credenciais inválidas", None
+
+def render_login_page():
+    """Tela de login clean com detalhes em roxo - Border ultra fina"""
+    
+    # CSS CLEAN COM DETALHES ROXOS - BORDER ULTRA FINA
+    st.markdown("""
+    <style>
+    /* Remove o header padrão do Streamlit */
+    [data-testid="stHeader"] {
+        display: none;
+    }
+    
+    /* FUNDO FORÇADO - MESMA COR DO SISTEMA */
+    html, body, #root, .stApp, [data-testid="stAppViewContainer"] {
+        background: #F0F4FF !important;
+        background-color: #F0F4FF !important;
+        min-height: 100vh !important;
+        height: 100% !important;
+    }
+    
+    .block-container {
+        max-width: 1400px !important;
+        width: 100% !important;
+        margin: 0 !important;          
+        padding: 1rem 0.5rem !important;  
+        box-sizing: border-box !important;
+    }
+    
+    
+    /* Logo */
+    .login-logo {
+        display: block;
+        margin: 0 auto 25px auto;
+        height: 70px;
+        width: auto;
+        max-width: 100%;
+    }
+    
+    /* Títulos com mais espaço */
+    .login-title {
+        text-align: center;
+        color: #522b7b;
+        font-size: 32px;
+        font-weight: 700;
+        margin-bottom: 8px;
+        font-family: 'Inter', -apple-system, sans-serif;
+        line-height: 1.2;
+        letter-spacing: -0.2px;
+    }
+    
+    .login-subtitle {
+        text-align: center;
+        color: #64748b;
+        font-size: 16px;
+        margin-bottom: 40px;
+        font-family: 'Inter', -apple-system, sans-serif;
+        line-height: 1.4;
+    }
+    
+    /* Labels SEM emojis */
+    .input-label {
+        display: block;
+        color: #522b7b;
+        font-size: 16px;
+        font-weight: 600;
+        margin-bottom: 8px;
+        font-family: 'Inter', -apple-system, sans-serif;
+    }
+    
+    /* Inputs - mais largos para acompanhar o retângulo */
+    div[data-testid="stTextInput"] > div > div > input {
+        border: 0.3px solid #d1d5db !important;
+        border-radius: 6px !important;
+        padding: 12px 14px !important;
+        font-size: 16px !important;
+        background: white !important;
+        transition: all 0.2s ease;
+        height: 46px !important;
+        color: #1e293b !important;
+        font-weight: 500 !important;
+        width: 1000% !important;
+    }
+    
+    div[data-testid="stTextInput"] > div > div > input:focus {
+        border-color: #522b7b !important;
+        border-width: 0.3px !important;
+        box-shadow: 0 0 0 1px rgba(82, 43, 123, 0.08) !important;
+    }
+    
+    /* TENTATIVA 1 - RESET COMPLETO DO BOTÃO DO OLHO */
+    button[kind="secondary"] {
+        width: 24px !important;
+        height: 24px !important;
+        min-width: 24px !important;
+        min-height: 24px !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+    }
+
+    /* TENTATIVA 2 - ESTILO MAIS GERAL */
+    div[data-testid="stTextInput"] button:last-child {
+        width: 20px !important;
+        height: 20px !important;
+        min-width: 20px !important;
+        min-height: 20px !important;
+        padding: 2px !important;
+        margin: 0 8px 0 0 !important;
+    }
+
+    /* TENTATIVA 3 - FOCAR NO SVG DIRETAMENTE */
+    .stTextInput button svg {
+        width: 16px !important;
+        height: 16px !important;
+        transform: scale(0.8) !important;
+    }
+
+    /* TENTATIVA 4 - USAR TRANSFORM PARA REDUZIR */
+    div[data-testid="stTextInput"] button {
+        transform: scale(1.3) !important;
+        transform-origin: center !important;
+        margin-right: 4px !important;
+    }
+
+    /* BOTÃO ENTRAR NO SISTEMA - ROXO SÓLIDO */
+    div[data-testid="stForm"] button {
+        background: #522b7b !important;  /* ROXO SÓLIDO */
+        color: white !important;
+        border: none !important;
+        padding: 12px !important;
+        border-radius: 6px !important;
+        font-size: 16px !important;
+        font-weight: 600 !important;
+        width: 100% !important;
+        margin-top: 10px !important;
+        transition: all 0.2s ease !important;
+        cursor: pointer !important;
+        font-family: 'Inter', sans-serif !important;
+    }
+    
+    div[data-testid="stForm"] button:hover {
+        background: #7e3ca8 !important;  /* ROXO MAIS CLARO NO HOVER */
+        transform: translateY(-1px);
+        box-shadow: 0 4px 15px rgba(82, 43, 123, 0.25);
+    }
+    
+    /* Linha decorativa - mais larga */
+    .login-divider {
+        height: 0.3px;
+        background: linear-gradient(90deg, transparent, rgba(139, 92, 246, 0.1), transparent);
+        margin: 30px 0;
+        border: none;
+        width: 100%;
+    }
+    
+    /* Rodapé - mais largo */
+    .login-footer {
+        text-align: center;
+        margin-top: 30px;
+        color: #64748b;
+        font-size: 14px;
+        line-height: 1.5;
+        width: 100%;
+    }
+    
+    /* Badge de segurança */
+    .security-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: #f8f7ff;
+        color: #7c3aed;
+        padding: 8px 16px;
+        border-radius: 18px;
+        font-size: 13px;
+        font-weight: 600;
+        margin-top: 15px;
+        border: 0.3px solid #f0edff;
+    }
+    
+    /* Ajuste do formulário para ocupar toda largura */
+    div[data-testid="stForm"] {
+        width: 100%;
+    }
+    
+    /* Responsivo */
+    @media (max-width: 768px) {
+        .login-rectangle {
+            width: 100% !important;
+            padding: 35px 30px;
+            margin: 0 auto;
+            max-width: 95%;
+        }
+        
+        .login-title {
+            font-size: 28px;
+        }
+        
+        .login-subtitle {
+            font-size: 15px;
+            margin-bottom: 35px;
+        }
+        
+        .login-logo {
+            height: 60px;
+        }
+    }
+    
+    @media (min-width: 1200px) {
+        .login-rectangle {
+            width: 600px;
+        }
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # Container principal
+    with st.container():
+        # RETÂNGULO COM BORDA ULTRA FINA E MAIS LARGO
+        st.markdown('<div class="login-rectangle">', unsafe_allow_html=True)
+        
+        # Logo
+        logo_local = carregar_logo()
+        if logo_local:
+            logo_base64 = logo_to_base64(logo_local)
+            st.markdown(f'<img src="data:image/png;base64,{logo_base64}" class="login-logo">', unsafe_allow_html=True)
+        else:
+            st.markdown('''
+            <div style="text-align: center; margin-bottom: 25px;">
+                <div style="background: linear-gradient(135deg, #522b7b 0%, #7e3ca8 100%); 
+                    width: 70px; height: 70px; border-radius: 12px; 
+                    display: inline-flex; align-items: center; justify-content: center; 
+                    color: white; font-size: 24px;">
+                    🔐
+                </div>
+            </div>''', unsafe_allow_html=True)
+        
+        st.markdown('<div class="login-title">Gestão de Leads</div>', unsafe_allow_html=True)
+        st.markdown('<div class="login-subtitle">Gov Academy | Sistema Interno</div>', unsafe_allow_html=True)
+        
+        # Formulário
+        with st.form("login_form", clear_on_submit=False):
+            # CPF
+            st.markdown('<span class="input-label">CPF</span>', unsafe_allow_html=True)
+            cpf_input = st.text_input(
+                "Digite seu CPF",
+                placeholder="000.000.000-00",
+                label_visibility="collapsed",
+                key="login_cpf"
+            )
+            
+            # SENHA 
+            st.markdown('<span class="input-label">Senha</span>', unsafe_allow_html=True)
+            
+            password_input = st.text_input(
+                "Digite sua senha", 
+                placeholder="••••••••",
+                type="password",
+                label_visibility="collapsed",
+                key="login_password"
+            )
+            
+            # Botão de login
+            submit_button = st.form_submit_button(
+                "🔐 ENTRAR NO SISTEMA",
+                use_container_width=True,
+                type="primary"
+            )
+        
+        # Linha decorativa ultra fina
+        st.markdown('<hr class="login-divider">', unsafe_allow_html=True)
+        
+        # Rodapé
+        st.markdown("""
+        <div class="login-footer">
+            <div style="margin-bottom: 12px; color: #475569; font-weight: 500; font-size: 14px;">
+                Acesso restrito a usuários autorizados
+            </div>
+            <div class="security-badge">
+                <span style="color: #7c3aed;">🔒</span> Conexão segura via SSL
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown('</div>', unsafe_allow_html=True)  
+    
+    # Processar login (mantido igual)
+    if submit_button:
+        if not cpf_input or not password_input:
+            st.error("❌ Por favor, preencha todos os campos.")
+        else:
+            allowed, message = check_login_attempts()
+            if not allowed:
+                st.error(f"⏳ {message}")
+            else:
+                with st.spinner("Verificando credenciais..."):
+                    success, message, user_info = verify_credentials(cpf_input, password_input)
+                    
+                    if success:
+                        st.session_state.authenticated = True
+                        st.session_state.user_info = user_info
+                        st.session_state.login_attempts = 0
+                        st.success(f"✅ {message}")
+                        time.sleep(1.5)
+                        st.rerun()
+                    else:
+                        st.session_state.login_attempts += 1
+                        st.session_state.last_attempt_time = time.time()
+                        st.error(f"❌ {message}")
+                        attempts_left = 5 - st.session_state.login_attempts
+                        if attempts_left > 0:
+                            st.info(f"⚠️ {attempts_left} tentativa(s) restante(s)")
+
+def render_header_menu():
+    """Renderiza o menu superior da aplicação com logout"""
+    st.markdown("""
+    <style>
+    /* Estilo para os botões do menu */
+    .stButton > button[kind="secondary"] {
+        height: 10px;
+        margin: 0 2px;
+        white-space: nowrap;
+        font-size: 14px;
+        font-weight: 600;
+    }
+    
+    /* Container do header */
+    .header-container {
+        background-color: white;
+        padding: 10px 0;
+        border-bottom: 1px solid #e2e8f0;
+        margin-bottom: 25px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    st.markdown('<div class="header-container">', unsafe_allow_html=True)
+    
+    # Layout principal com 3 colunas
+    col_logo, col_menu, col_user = st.columns([2, 7, 3])
+    
+    # Logo
+    with col_logo:
+        logo_local = carregar_logo()
+        if logo_local:
+            logo_base64 = logo_to_base64(logo_local)
+            st.markdown(f'''
+            <div style="display: flex; align-items: center; height: 100%;">
+                <img src="data:image/png;base64,{logo_base64}" 
+                     style="height: {LOGO_HEIGHT}px; width: auto; margin-left: 5px;">
+            </div>
+            ''', unsafe_allow_html=True)
+    
+    # Menu de navegação - Horizontal fixo
+    if st.session_state.authenticated:
+        with col_menu:
+            # Forçar altura do container
+            st.markdown('<div style="height: 50px; display: flex; align-items: center;">', unsafe_allow_html=True)
+            
+            menu_items = [
+                ("📊 Dashboard", "Dashboard"),
+                ("📝 Cadastrar", "Cadastrar"),
+                ("👥 Leads", "Leads"),
+                ("🎓 Cursos", "Cursos"),
+                ("📈 Relatórios", "Relatórios")
+            ]
+            
+            # Criar uma linha de botões
+            menu_cols = st.columns(len(menu_items))
+            for i, (label, key) in enumerate(menu_items):
+                with menu_cols[i]:
+                    if st.button(label, 
+                               key=f"nav_{key}", 
+                               use_container_width=True, 
+                               type="secondary"):
+                        st.session_state.menu_atual = key
+                        st.rerun()
+            
+            st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Área do usuário e logout - Alinhado à direita
+        with col_user:
+            st.markdown('<div style="height: 50px; display: flex; align-items: center; justify-content: flex-end; gap: 10px;">', unsafe_allow_html=True)
+            
+            # Informação do usuário
+            user_name = st.session_state.user_info.get('nome', 'Usuário')
+            
+            # Container para usuário e botão de logout
+            user_col1, user_col2 = st.columns([1, 1])
+            
+            with user_col1:
+                if st.button("🚪 Sair", 
+                        key="logout_button", 
+                        use_container_width=True, 
+                        type="secondary"):
+                    
+                    # Limpar sessão
+                    for key in list(st.session_state.keys()):
+                        if key not in ['login_attempts', 'last_attempt_time']:
+                            del st.session_state[key]
+        
+                    st.session_state.authenticated = False
+                    st.session_state.user_info = {}
+                    st.rerun()
+            
+            with user_col2:
+                st.markdown(f'''
+                <div style="
+                    background: #522b7b;
+                    color: #ffffff;
+                    padding: 8px 12px;
+                    border-radius: 8px;
+                    font-size: 16px;
+                    font-weight: 600;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    border: 1px solid #e2e8f0;
+                    height: 38px;
+                    min-width: 120px;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                ">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="#ffffff">
+                        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                    </svg>
+                    <span title="{user_name}">{user_name[:15]}{'...' if len(user_name) > 15 else ''}</span>
+                </div>
+                ''', unsafe_allow_html=True)
+
+# ============================================================================
+# 5. FUNÇÕES DE DADOS (GOOGLE SHEETS) 
 # ============================================================================
 @st.cache_resource
 def init_gsheets():
@@ -56,7 +653,7 @@ def init_gsheets():
         return None
 
 # ============================================================================
-# 3. FUNÇÕES AUXILIARES PARA CREDENCIAIS
+# 6. FUNÇÕES AUXILIARES PARA CREDENCIAIS
 # ============================================================================
 def get_credentials():
     """Retorna credenciais - funciona local e na nuvem"""
@@ -137,7 +734,7 @@ def get_credentials():
         return None
     
 # ============================================================================
-# 4. FUNÇÕES DE SUPORTE
+# 7. FUNÇÕES DE SUPORTE
 # ============================================================================
 def carregar_logo():
     """Carrega logo da empresa - funciona local e na nuvem"""
@@ -175,7 +772,7 @@ def logo_to_base64(image):
         return None
 
 # ============================================================================
-# 5 CSS — ESTRUTURAL 
+# 8. CSS — ESTRUTURAL 
 # ============================================================================
 st.markdown("""
 <style>
@@ -418,8 +1015,9 @@ div[data-baseweb="select"] [role="option"] {
 """, unsafe_allow_html=True)
 
 # ============================================================================
-# 6. CSS — CORES / TEMA
+# 9. CSS — CORES / TEMA
 # ============================================================================
+
 st.markdown(f"""
 <style>
 .stApp {{
@@ -450,8 +1048,9 @@ div[data-baseweb="select"]:focus-within,
 """, unsafe_allow_html=True)
 
 # ============================================================================
-# 7 CSS — CHECKBOX COM REALCE (adicione esta seção depois da 5 ou 6)
+# 10. CSS — CHECKBOX COM REALCE 
 # ============================================================================
+
 st.markdown("""
 <style>
 /* Realce forte para checkbox selecionado */
@@ -488,58 +1087,9 @@ div[data-testid="stCheckbox"]:has(input:checked) label::before {
 """, unsafe_allow_html=True)
 
 # ============================================================================
-# 8. FUNÇÕES DE INTERFACE
+# 11. FUNÇÕES DE DADOS
 # ============================================================================
-def render_metric_card(label, value, delta=None):
-    """Renderiza um card de métrica"""
-    st.markdown(f"""
-    <div class="white-card" style="text-align: center; padding: 15px;">
-        <div style="color: #64748b; font-size: 0.9rem; font-weight: 600; text-transform: uppercase;">{label}</div>
-        <div style="font-size: 1.8rem; font-weight: 800; color: {PRIMARY_COLOR}; margin: 5px 0;">{value}</div>
-        {f'<div style="color: #10b981; font-size: 0.85rem; font-weight: 600;">↑ {delta}</div>' if delta else '<div style="height: 20px;"></div>'}
-    </div>
-    """, unsafe_allow_html=True)
 
-def render_header_menu():
-    """Renderiza o menu superior da aplicação"""
-    st.markdown('<div style="background-color: white; padding: 15px 0; border-bottom: 1px solid #e2e8f0; margin-bottom: 25px;">', unsafe_allow_html=True)
-    
-    col_logo, col_nav = st.columns([3, 12])
-    
-    # Logo
-    with col_logo:
-        logo_local = carregar_logo()
-        if logo_local:
-            logo_base64 = logo_to_base64(logo_local)
-            st.markdown(f'<img src="data:image/png;base64,{logo_base64}" style="height: {LOGO_HEIGHT}px; width: auto; margin-left: 15px;">', unsafe_allow_html=True)
-    
-    # Menu de Navegação
-    with col_nav:
-        st.markdown('<div style="height: 20px;"></div>', unsafe_allow_html=True)
-        menu_items = [
-            ("📊 Dashboard", "Dashboard"),
-            ("📝 Cadastrar", "Cadastrar"),
-            ("👥 Leads", "Leads"),
-            ("🎓 Cursos", "Cursos"),
-            ("📈 Relatórios", "Relatórios"),
-            ("⚙️ Configurações", "Configurações")
-        ]
-        
-        cols = st.columns(len(menu_items))
-        for i, (label, key) in enumerate(menu_items):
-            is_active = st.session_state.menu_atual == key
-            with cols[i]:
-                if is_active: st.markdown('<div class="active-btn">', unsafe_allow_html=True)
-                if st.button(label, key=f"nav_main_{key}", use_container_width=True):
-                    st.session_state.menu_atual = key
-                    st.rerun()
-                if is_active: st.markdown('</div>', unsafe_allow_html=True)
-    
-    st.markdown('</div>', unsafe_allow_html=True)
-
-# ============================================================================
-# 9. FUNÇÕES DE DADOS
-# ============================================================================
 def get_valores_padrao():
     """Retorna valores padrão para dropdowns"""
     return {
@@ -765,7 +1315,7 @@ def salvar_lead_no_google_sheets(novo_lead):
         return False
     
 # ============================================================================
-# 10. FUNÇÕES PARA EDITAR E EXCLUIR LEADS
+# 12. FUNÇÕES PARA EDITAR E EXCLUIR LEADS
 # ============================================================================
 
 def deletar_lead_do_google_sheets(lead_id):
@@ -873,8 +1423,9 @@ def atualizar_lead_no_google_sheets(lead_id, dados_atualizados):
     
 
 # ============================================================================
-# 11. FUNÇÕES PARA CARREGAR DADOS
+# 13. FUNÇÕES PARA CARREGAR DADOS
 # ============================================================================
+
 def limpar_numeros(texto):
     """Remove tudo que não é número"""
     if not texto:
@@ -948,7 +1499,7 @@ def verificar_email_existente(email):
         return {'existe': False}
     
 # ============================================================================
-# FUNÇÃO TEMPORÁRIA PARA ANÁLISE CRUZADA
+# 14. FUNÇÃO TEMPORÁRIA PARA ANÁLISE CRUZADA
 # ============================================================================
 
 def analisar_cruzar_dados(df_leads, df_cursos):
@@ -1005,7 +1556,7 @@ def analisar_cruzar_dados(df_leads, df_cursos):
         }
     
 # ============================================================================
-# FUNÇÕES PARA IMPORTAR DADOS DE CURSOS 
+# 15. FUNÇÕES PARA IMPORTAR DADOS DE CURSOS 
 # ============================================================================
 
 @st.cache_data(ttl=300)  # Cache de 5 minutos
@@ -1103,9 +1654,16 @@ def importar_dados_cursos_automatico():
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
      
 # ============================================================================
-# 12. APLICAÇÃO PRINCIPAL
+# 16. APLICAÇÃO PRINCIPAL
 # ============================================================================
+
 def main():
+
+    # VERIFICAÇÃO DE LOGIN - PRIMEIRA COISA A FAZER
+    if not st.session_state.authenticated:
+        render_login_page()
+        return
+    
     # Carregar opções
     opcoes = carregar_opcoes_dropdown()
     
@@ -1114,6 +1672,8 @@ def main():
     
     # Conteúdo baseado no menu selecionado
     menu = st.session_state.menu_atual
+
+    # TODO: Adicionar verificação de permissões aqui no futuro
     
     if menu == "Dashboard":
         # Dashboard
@@ -2786,12 +3346,5 @@ def main():
         st.info("Módulo de relatórios em desenvolvimento...")
         st.markdown('</div>', unsafe_allow_html=True)
         
-    elif menu == "Configurações":
-        # Configurações
-        st.markdown('<div class="white-card">', unsafe_allow_html=True)
-        st.subheader("Configurações")
-        st.info("Painel de configurações em desenvolvimento...")
-        st.markdown('</div>', unsafe_allow_html=True)
-
 if __name__ == "__main__":
     main()
