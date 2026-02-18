@@ -3759,19 +3759,38 @@ def main():
                 # Para compatibilidade com o código existente
                 municipios_disponiveis = municipios_nao_trabalhados.copy()
             
-            # Métricas
-            col_met1, col_met2, col_met3, col_met4 = st.columns(4)
+            # 🟢 BARRA DE PROGRESSO - SOMENTE MUNICÍPIOS DA BAHIA 🟢
+            total_municipios_bahia = len(municipios_bahia)  # 417
             
-            with col_met1:
-                st.metric("🏙️ Total BA", len(municipios_bahia))
-            with col_met2:
-                st.metric("✅ Já Trabalhados", len(municipios_trabalhados))
-            with col_met3:
-                st.metric("🎯 A Abordar", len(municipios_disponiveis))
-            with col_met4:
-                st.metric("📞 Abordagens Feitas", len(st.session_state.abordagens_bahia))
+            # Apenas municípios da Bahia que estão na planilha
+            municipios_bahia_na_planilha = [mun for mun in municipios_trabalhados if mun in municipios_bahia]
+            abordados_planilha = len(municipios_bahia_na_planilha)  # 86
             
-            st.markdown("---")
+            # Os que ainda não foram abordados (total - abordados na planilha)
+            faltam_abordar = total_municipios_bahia - abordados_planilha  # 331
+            
+            percentual = int((abordados_planilha / total_municipios_bahia) * 100)  # 21%
+            
+            st.markdown(f"""
+            <div style="background: white; border-radius: 16px; padding: 20px; margin-bottom: 25px; border: 1px solid #e2e8f0;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <span style="font-size: 16px; font-weight: 600; color: #1e293b;">
+                        🎯 Progresso de Abordagens - Bahia
+                    </span>
+                    <span style="font-size: 20px; font-weight: 700; color: {PRIMARY_COLOR};">
+                        {abordados_planilha}/{total_municipios_bahia}
+                    </span>
+                </div>
+                <div style="width: 100%; height: 12px; background: #f1f5f9; border-radius: 6px; overflow: hidden; margin-bottom: 10px;">
+                    <div style="width: {percentual}%; height: 100%; background: linear-gradient(90deg, {PRIMARY_COLOR}, #8b5cf6); border-radius: 6px;"></div>
+                </div>
+                <div style="display: flex; justify-content: space-between; color: #64748b; font-size: 13px;">
+                    <span>✅ Já abordados: {abordados_planilha}</span>
+                    <span>⏳ Ainda faltam: {faltam_abordar}</span>
+                    <span>📊 {percentual}% concluído</span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
             
             # Se não há municípios disponíveis
             if not municipios_disponiveis:
@@ -3878,16 +3897,7 @@ def main():
                            m.endswith(" " + busca_upper) or 
                            f" {busca_upper} " in f" {m} "
                     ]
-                
-                # Mostrar métricas atualizadas
-                col_count1, col_count2, col_count3 = st.columns(3)
-                with col_count1:
-                    st.metric("📍 Total", len(municipios_bahia))
-                with col_count2:
-                    st.metric("✅ Abordados", len(municipios_abordados_set))
-                with col_count3:
-                    st.metric("⏳ Pendentes", len(municipios_bahia) - len(municipios_abordados_set))
-                
+                                
                 st.info(f"📌 **{len(municipios_filtrados)}** municípios exibidos")
 
                 # ===== LISTA DE MUNICÍPIOS COM PAGINAÇÃO =====
