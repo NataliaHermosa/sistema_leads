@@ -7,9 +7,13 @@ import io
 import base64
 from PIL import Image
 import os
-from datetime import datetime
+from datetime import datetime, date 
 import hashlib
 import time
+
+def atualizar_lead_selecionado():
+    """Callback para atualizar o lead selecionado"""
+    st.session_state.lead_info_contato = st.session_state.get('select_lead_contato_UNICO')
 
 # ============================================================================
 # 1. CONFIGURAÇÃO, TEMA E CREDENCIAIS
@@ -219,22 +223,29 @@ def render_login_page():
         background-color: #F0F4FF !important;
         min-height: 100vh !important;
         height: 100% !important;
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;  
     }
     
     .block-container {
-        max-width: 1400px !important;
+        max-width: 600px !important;
         width: 100% !important;
-        margin: 0 !important;          
-        padding: 1rem 0.5rem !important;  
+        margin: 0 auto !important;          
+        padding: 1rem !important;  
         box-sizing: border-box !important;
+        display: flex !important;           
+        flex-direction: column !important;  
+        justify-content: center !important; 
+        align-items: center !important; 
     }
     
     
     /* Logo */
     .login-logo {
         display: block;
-        margin: 0 auto 25px auto;
-        height: 70px;
+        margin: 0 auto 15px auto;
+        height: 85px;
         width: auto;
         max-width: 100%;
     }
@@ -635,7 +646,7 @@ def render_header_menu():
                 ''', unsafe_allow_html=True)
 
 # ============================================================================
-# 5. FUNÇÕES DE DADOS (GOOGLE SHEETS) 
+# 4. FUNÇÕES DE DADOS (GOOGLE SHEETS) 
 # ============================================================================
 @st.cache_resource
 def init_gsheets():
@@ -653,7 +664,7 @@ def init_gsheets():
         return None
 
 # ============================================================================
-# 6. FUNÇÕES AUXILIARES PARA CREDENCIAIS
+# 5. FUNÇÕES AUXILIARES PARA CREDENCIAIS
 # ============================================================================
 def get_credentials():
     """Retorna credenciais - funciona local e na nuvem"""
@@ -734,7 +745,7 @@ def get_credentials():
         return None
     
 # ============================================================================
-# 7. FUNÇÕES DE SUPORTE
+# 6. FUNÇÕES DE SUPORTE
 # ============================================================================
 def carregar_logo():
     """Carrega logo da empresa - funciona local e na nuvem"""
@@ -772,7 +783,7 @@ def logo_to_base64(image):
         return None
 
 # ============================================================================
-# 8. CSS — ESTRUTURAL 
+# 7. CSS — ESTRUTURAL 
 # ============================================================================
 st.markdown("""
 <style>
@@ -1015,7 +1026,7 @@ div[data-baseweb="select"] [role="option"] {
 """, unsafe_allow_html=True)
 
 # ============================================================================
-# 9. CSS — CORES / TEMA
+# 8. CSS — CORES / TEMA
 # ============================================================================
 
 st.markdown(f"""
@@ -1048,7 +1059,7 @@ div[data-baseweb="select"]:focus-within,
 """, unsafe_allow_html=True)
 
 # ============================================================================
-# 10. CSS — CHECKBOX COM REALCE 
+# 9. CSS — CHECKBOX COM REALCE 
 # ============================================================================
 
 st.markdown("""
@@ -1124,10 +1135,6 @@ div[data-testid="stCheckbox"]:has(input:checked) label::before {
 }
 </style>
 """, unsafe_allow_html=True)
-
-# ============================================================================
-# CORREÇÃO DE CONTRASTE PARA MULTISELECT
-# ============================================================================
 
 st.markdown("""
 <style>
@@ -1162,21 +1169,31 @@ st.markdown("""
 def get_valores_padrao():
     """Retorna valores padrão para dropdowns"""
     return {
-        'origens': ['Google Ads', 'Instagram', 'LinkedIn', 'Indicação', 'Site/Blog', 'Evento/Palestrante', 'Email Marketing', 'Outro'],
-        'status': ['Novo', 'Contatado', 'Qualificado', 'Proposta_Enviada', 'Negociação', 'Convertido', 'Perdido'],
-        'classificacoes': ['Quente', 'Morno', 'Frio'],
+        # VALORES CRÍTICOS QUE SEMPRE DEVEM EXISTIR
         'estados': ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 
                    'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'],
-        'cargos': ['CEO/Diretor', 'Gerente', 'Coordenador', 'Supervisor', 'Analista', 
-                  'Assistente', 'Estagiário', 'Autônomo'],
-        'interesses': ['Curso Básico', 'Curso Avançado', 'Mentoria', 'Consultoria', 
-                      'Certificação', 'Workshop', 'Material Didático', 'Outro'],
-        'produtos': ['Curso Básico', 'Curso Avançado', 'Mentoria', 'Consultoria'],
-        'canais': ['Email', 'Telefone', 'WhatsApp', 'Presencial'],
-        'tipos_cliente': [],  # Agora vazio, será carregado da planilha configuracoes
-        'tags': ['Prioridade Alta', 'Recontatar', 'Cliente Potencial', 'Seguir-up', 'Promoção'],
-        'equipe': [],  # Será preenchido da planilha
-        'cidades': {}
+        'cidades': {},
+        
+        # VALORES DE FALLBACK BÁSICOS (se planilha falhar)
+        'origens': ['Google Ads', 'Instagram', 'LinkedIn', 'Indicação', 'Outro'],
+        'status': ['Novo', 'Contatado', 'Convertido', 'Perdido'],
+        'classificacoes': ['Quente', 'Morno', 'Frio'],
+        'cargos': ['Gerente', 'Coordenador', 'Analista', 'Assistente'],
+        
+        # VALORES ESPECÍFICOS PARA CONTATOS (fallback)
+        'consultores': ['VANESSA', 'ANDERSON', 'GABRIEL', 'RÔMULO'],
+        'atendentes_sdr': ['SAMIRA', 'RISIA'],
+        'status_contato': ['Realizado', 'Agendado', 'Comprado', 'Desistiu'],
+        'objetivos_contato': ['Apresentação', 'Follow-up', 'Negociação'],
+        'cursos_oferecidos': ['Curso Básico', 'Curso Avançado'],
+        
+        # OUTROS (serão carregados da planilha ou ficam vazios)
+        'interesses': [],
+        'produtos': [],
+        'canais': [],
+        'tipos_cliente': [],
+        'tags': [],
+        'equipe': []
     }
 
 def carregar_cidades_por_estado():
@@ -1271,17 +1288,38 @@ def carregar_opcoes_dropdown():
         if dados and len(dados) > 1:
             df_config = pd.DataFrame(dados[1:], columns=dados[0])
 
-            # Mapeamento de colunas
+            # MAPEAMENTO DE COLUNAS ATUALIZADO COM OS NOMES CORRETOS
             mapeamento = {
-                'origens': 'Origens', 'status': 'Status', 'classificacoes': 'Classificacoes',
-                'estados': 'Estados', 'cargos': 'Cargos_Comuns', 'interesses': 'Interesses',
-                'produtos': 'Produto', 'canais': 'Canais_Preferidos', 'tipos_cliente': 'Tipos_Cliente',
-                'tags': 'Tags'
+                'origens': 'Origens', 
+                'status': 'Status', 
+                'classificacoes': 'Classificacoes',
+                'estados': 'Estados', 
+                'cargos': 'Cargos_Comuns', 
+                'interesses': 'Interesses',
+                'produtos': 'Produto', 
+                'canais': 'Canais_Preferidos', 
+                'tipos_cliente': 'Tipos_Cliente',
+                'tags': 'Tags',
+                'cursos_oferecidos': 'Produto',
+                # NOVOS CAMPOS PARA CONTATOS - COM OS NOMES CORRETOS QUE VOCÊ ME PASSOU
+                'consultores': 'Consultores',              # ← COM C maiúsculo (como está na planilha)
+                'atendentes_sdr': 'SDRs',                 # ← Exatamente "SDRs" (como está na planilha)
+                # Note: Status_Contato, Objetivo e Curso_Oferecido estão na aba "contatos", não em "configuracoes"
+                # Vamos manter os valores padrão para estes
             }
 
             for chave, coluna in mapeamento.items():
                 if coluna in df_config.columns:
-                    opcoes[chave] = [str(x).strip() for x in df_config[coluna].dropna().tolist() if str(x).strip()]
+                    # Limpar e processar valores
+                    valores = []
+                    for x in df_config[coluna].dropna().tolist():
+                        valor = str(x).strip()
+                        if valor:  # Só adicionar se não for vazio
+                            valores.append(valor)
+                    
+                    if valores:  # Só atualizar se encontrou valores
+                        opcoes[chave] = valores
+                    # Se não encontrar valores, mantém o fallback da get_valores_padrao()
 
         # Carregar equipe da aba 'equipe'
         try:
@@ -1307,7 +1345,8 @@ def carregar_opcoes_dropdown():
         
         return opcoes
 
-    except Exception:
+    except Exception as e:
+        st.error(f"Erro ao carregar opções: {e}")
         # Em caso de erro, usar valores padrão
         cidades_carregadas = carregar_cidades_por_estado()
         st.session_state.opcoes['cidades'] = cidades_carregadas
@@ -1382,9 +1421,140 @@ def salvar_lead_no_google_sheets(novo_lead):
     except Exception as e:
         st.error(f"Erro ao salvar: {e}")
         return False
-    
+
 # ============================================================================
-# 12. FUNÇÕES PARA EDITAR E EXCLUIR LEADS
+# 12. FUNÇÕES PARA A NOVA ABA "CONTATOS"
+# ============================================================================
+
+def verificar_aba_contatos():
+    """Verifica se a aba 'contatos' existe e tem estrutura correta"""
+    try:
+        creds = get_credentials()
+        client = gspread.authorize(creds)
+        planilha = client.open_by_key(SPREADSHEET_ID)
+        
+        try:
+            worksheet = planilha.worksheet('contatos')
+            return worksheet
+            
+        except gspread.exceptions.WorksheetNotFound:
+            st.error("❌ Aba 'contatos' não encontrada no Google Sheets")
+            st.info("Por favor, verifique se criou a aba 'contatos' com as colunas especificadas")
+            return None
+            
+    except Exception as e:
+        st.error(f"❌ Erro ao acessar aba 'contatos': {e}")
+        return None
+
+@st.cache_data(ttl=60)
+def carregar_contatos():
+    """Carrega todos os contatos da aba 'contatos'"""
+    try:
+        worksheet = verificar_aba_contatos()
+        if not worksheet:
+            return pd.DataFrame()
+        
+        # Buscar todos os dados
+        dados = worksheet.get_all_values()
+        
+        if not dados or len(dados) <= 1:
+            return pd.DataFrame()  # Retorna DataFrame vazio se só tiver cabeçalho
+        
+        # Criar DataFrame
+        df = pd.DataFrame(dados[1:], columns=dados[0])
+        
+        return df
+        
+    except Exception as e:
+        st.error(f"❌ Erro ao carregar contatos: {e}")
+        return pd.DataFrame()
+
+def salvar_novo_contato(dados_contato):
+    """Salva um novo contato na aba 'contatos'"""
+    try:
+        worksheet = verificar_aba_contatos()
+        if not worksheet:
+            return False, "Erro ao acessar aba de contatos"
+        
+        from datetime import datetime
+        
+        # Gerar ID único
+        if 'ID_Contato' not in dados_contato or not dados_contato['ID_Contato']:
+            contato_id = f"C{datetime.now().strftime('%Y%m%d%H%M%S')}"
+            dados_contato['ID_Contato'] = contato_id
+        
+        # Adicionar data de cadastro
+        if 'Data_Cadastro' not in dados_contato:
+            dados_contato['Data_Cadastro'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Obter cabeçalhos da planilha
+        cabecalhos = worksheet.row_values(1)
+        
+        # Preparar dados na ordem dos cabeçalhos
+        dados_para_salvar = []
+        for cabecalho in cabecalhos:
+            valor = dados_contato.get(cabecalho, '')
+            
+            # Converter datas para string se necessário
+            if 'Data' in cabecalho and valor:
+                if isinstance(valor, (datetime, pd.Timestamp)):
+                    valor = valor.strftime("%Y-%m-%d")
+                elif isinstance(valor, str) and 'T' in valor:  # Formato ISO
+                    try:
+                        valor = datetime.fromisoformat(valor.replace('Z', '')).strftime("%Y-%m-%d")
+                    except:
+                        pass
+            
+            dados_para_salvar.append(str(valor) if valor is not None else '')
+        
+        # Adicionar nova linha
+        worksheet.append_row(dados_para_salvar)
+        
+        # Limpar cache
+        st.cache_data.clear()
+        
+        return True, f"✅ Contato {dados_contato['ID_Contato']} salvo com sucesso!"
+        
+    except Exception as e:
+        return False, f"❌ Erro ao salvar contato: {e}"
+
+def buscar_leads_para_contato():
+    """Busca leads para seleção no formulário de contatos"""
+    try:
+        df_leads = load_leads()
+        
+        if df_leads.empty:
+            return []
+        
+        # Criar lista de opções no formato: "Nome - Email (ID: L123)"
+        opcoes_leads = []
+        for _, lead in df_leads.iterrows():
+            nome = lead.get('Nome', 'Sem nome')
+            email = lead.get('Email', 'Sem email')
+            lead_id = lead.get('ID', '')
+            
+            if nome and email and lead_id:
+                display_text = f"{nome} - {email} (ID: {lead_id})"
+                opcoes_leads.append({
+                    'display': display_text,
+                    'id': lead_id,
+                    'nome': nome,
+                    'email': email,
+                    'telefone': lead.get('Telefone', ''),
+                    'cargo': lead.get('Cargo_Funcao', ''),
+                    'ente': lead.get('Ente', ''),
+                    'estado': lead.get('Estado', ''),
+                    'cidade': lead.get('Cidade', '')
+                })
+        
+        return opcoes_leads
+        
+    except Exception as e:
+        st.error(f"Erro ao buscar leads: {e}")
+        return []
+
+# ============================================================================
+# 13. FUNÇÕES PARA EDITAR E EXCLUIR LEADS
 # ============================================================================
 
 def deletar_lead_do_google_sheets(lead_id):
@@ -1492,7 +1662,7 @@ def atualizar_lead_no_google_sheets(lead_id, dados_atualizados):
     
 
 # ============================================================================
-# 13. FUNÇÕES PARA CARREGAR DADOS
+# 14. FUNÇÕES PARA CARREGAR DADOS
 # ============================================================================
 
 def limpar_numeros(texto):
@@ -1568,7 +1738,7 @@ def verificar_email_existente(email):
         return {'existe': False}
     
 # ============================================================================
-# 14. FUNÇÃO TEMPORÁRIA PARA ANÁLISE CRUZADA
+# 15. FUNÇÃO TEMPORÁRIA PARA ANÁLISE CRUZADA
 # ============================================================================
 
 def analisar_cruzar_dados(df_leads, df_cursos):
@@ -1625,10 +1795,10 @@ def analisar_cruzar_dados(df_leads, df_cursos):
         }
     
 # ============================================================================
-# 15. FUNÇÕES PARA IMPORTAR DADOS DE CURSOS 
+# 16. FUNÇÕES PARA IMPORTAR DADOS DE CURSOS 
 # ============================================================================
 
-@st.cache_data(ttl=300)  # Cache de 5 minutos
+@st.cache_data(ttl=86400)  
 def importar_dados_cursos_automatico():
     """
     Importa dados das 4 abas de cursos - PARA PRODUÇÃO
@@ -1722,8 +1892,177 @@ def importar_dados_cursos_automatico():
         st.error(f"Erro ao carregar planilha: {e}")
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
      
+
 # ============================================================================
-# 16. APLICAÇÃO PRINCIPAL
+# 16. FUNÇÕES PARA ABA DE ABORDAGENS (MUNICÍPIOS BAHIA) - COM CACHE
+# ============================================================================
+
+@st.cache_data(ttl=86400)
+def carregar_municipios_bahia():
+    """Carrega municípios da Bahia da aba 'municipios_ba'"""
+    try:
+        creds = get_credentials()
+        client = gspread.authorize(creds)
+        planilha = client.open_by_key(SPREADSHEET_ID)
+        
+        # Acessar a aba
+        worksheet = planilha.worksheet('municipios_ba')
+        dados = worksheet.get_all_values()
+        
+        if not dados or len(dados) <= 1:
+            return []
+        
+        # Pular cabeçalho e pegar SEGUNDA coluna (índice 1)
+        municipios = []
+        for linha in dados[1:]:
+            if len(linha) > 1:  # Tem pelo menos 2 colunas
+                mun = linha[1].strip()  # Coluna Nome_Município
+                if mun and mun.upper() != 'NAN':
+                    municipios.append(mun.upper())
+        
+        return sorted(municipios)
+        
+    except Exception as e:
+        st.error(f"Erro ao carregar municípios da Bahia: {e}")
+        return []
+
+@st.cache_data(ttl=86400)  # Cache de 24 HORAS
+def carregar_municipios_trabalhados():
+    """Carrega municípios que já estão em participantes ou desistências"""
+    try:
+        # Carregar dados dos cursos (já tem cache)
+        df_agosto, df_novembro, df_desistencias, df_desistencias_historico = importar_dados_cursos_automatico()
+        
+        municipios_trabalhados = set()
+        
+        def normalizar_municipio(nome):
+            if pd.isna(nome):
+                return None
+            nome = str(nome).strip().upper()
+            nome = nome.replace('-BA', '').replace(' - BA', '').replace(' BA', '')
+            nome = nome.replace(' - ', ' ').replace('  ', ' ')
+            return nome.strip()
+        
+        # Participantes
+        df_cursos = pd.concat([df_agosto, df_novembro], ignore_index=True)
+        if not df_cursos.empty and 'MUNICIPIO' in df_cursos.columns:
+            for mun in df_cursos['MUNICIPIO'].dropna():
+                mun_norm = normalizar_municipio(mun)
+                if mun_norm:
+                    municipios_trabalhados.add(mun_norm)
+        
+        # Desistências
+        df_desistencias_total = pd.concat([df_desistencias, df_desistencias_historico], ignore_index=True)
+        if not df_desistencias_total.empty and 'MUNICIPIO' in df_desistencias_total.columns:
+            for mun in df_desistencias_total['MUNICIPIO'].dropna():
+                mun_norm = normalizar_municipio(mun)
+                if mun_norm:
+                    municipios_trabalhados.add(mun_norm)
+        
+        return sorted(municipios_trabalhados)
+        
+    except Exception as e:
+        st.error(f"Erro ao carregar municípios trabalhados: {e}")
+        return []
+
+# ============================================================================
+# 17. LIMPAR CACHE MANUALMENTE
+# ============================================================================   
+
+def limpar_cache_global():
+    """Limpa todos os caches do sistema"""
+    st.cache_data.clear()
+    if 'municipios_bahia' in st.session_state:
+        del st.session_state.municipios_bahia
+    if 'municipios_trabalhados' in st.session_state:
+        del st.session_state.municipios_trabalhados
+    st.success("✅ Cache limpo com sucesso!")
+    
+# ============================================================================
+# 18. FUNÇÕES PARA ABA DE ABORDAGENS
+# ============================================================================
+
+def inicializar_estado_abordagens():
+    """Inicializa o estado das abordagens no session_state"""
+    if 'abordagens_bahia' not in st.session_state:
+        st.session_state.abordagens_bahia = {}
+    
+    if 'filtro_abordagem' not in st.session_state:
+        st.session_state.filtro_abordagem = "Todos"
+
+def marcar_municipio_abordado(municipio, atendente):
+    """Marca um município como abordado por um atendente (substitui o anterior)"""
+    # Agora é apenas uma string, não mais uma lista
+    st.session_state.abordagens_bahia[municipio] = atendente
+    return True
+
+def desmarcar_municipio_abordado(municipio):
+    """Remove a marcação de abordagem de um município"""
+    if municipio in st.session_state.abordagens_bahia:
+        del st.session_state.abordagens_bahia[municipio]
+        return True
+    return False
+
+
+# ============================================================================
+# 19. FUNÇÕES PARA SALVAR/CARREGAR ABORDAGENS NO GOOGLE SHEETS
+# ============================================================================
+
+def salvar_abordagens_no_google_sheets():
+    """Salva as marcações manuais na aba 'abordagens_manuais' do Google Sheets"""
+    try:
+        creds = get_credentials()
+        client = gspread.authorize(creds)
+        planilha = client.open_by_key(SPREADSHEET_ID)
+        
+        # Criar ou acessar a aba
+        try:
+            worksheet = planilha.worksheet('abordagens_manuais')
+        except gspread.exceptions.WorksheetNotFound:
+            worksheet = planilha.add_worksheet(title="abordagens_manuais", rows="1000", cols="2")
+            worksheet.append_row(["Município", "SDR"])
+        
+        # Limpar dados antigos (manter cabeçalho)
+        worksheet.clear()
+        worksheet.append_row(["Município", "SDR"])
+        
+        # Salvar todas as abordagens atuais
+        for municipio, sdr in st.session_state.abordagens_bahia.items():
+            worksheet.append_row([municipio, sdr])
+        
+        return True
+    except Exception as e:
+        st.error(f"Erro ao salvar abordagens: {e}")
+        return False
+
+def carregar_abordagens_do_google_sheets():
+    """Carrega as marcações manuais da aba 'abordagens_manuais'"""
+    try:
+        creds = get_credentials()
+        client = gspread.authorize(creds)
+        planilha = client.open_by_key(SPREADSHEET_ID)
+        
+        try:
+            worksheet = planilha.worksheet('abordagens_manuais')
+            dados = worksheet.get_all_values()
+            
+            abordagens = {}
+            if len(dados) > 1:
+                for linha in dados[1:]:
+                    if len(linha) >= 2 and linha[0] and linha[1]:
+                        abordagens[linha[0]] = linha[1]
+            
+            return abordagens
+        except gspread.exceptions.WorksheetNotFound:
+            # Se a aba não existe, retorna vazio
+            return {}
+            
+    except Exception as e:
+        st.error(f"Erro ao carregar abordagens: {e}")
+        return {}
+
+# ============================================================================
+# 20. APLICAÇÃO PRINCIPAL
 # ============================================================================
 
 def main():
@@ -2846,7 +3185,7 @@ def main():
                 st.error("❌ **Campo obrigatório:** Selecione um Estado!")
             elif not cidade_selecionada or cidade_selecionada.strip() == "":
                 st.error("❌ **Campo obrigatório:** Digite a Cidade!")
-            elif not ente:
+            elif not entes_selecionados: 
                 st.error("❌ **Campo obrigatório:** Selecione pelo menos um Ente!")
             # VALIDAÇÃO DE CPF (apenas números)
             elif cpf and not cpf.replace('.', '').replace('-', '').replace(' ', '').isdigit():
@@ -2876,7 +3215,7 @@ def main():
                     pass  # Variável não definida, mantém string vazia
                 
                 # Converter lista de entes para string separada por vírgula
-                ente_str = ", ".join(ente) if ente else ""
+                ente_str = ", ".join(entes_selecionados) if entes_selecionados else ""
                 
                 # Criar dicionário com os dados
                 novo_lead = {
@@ -3068,14 +3407,21 @@ def main():
 
 
         # ==================== TABS DE ANÁLISE ====================
-        tab1, tab2 = st.tabs([
+        # Inicializar a aba ativa no session_state
+        if 'aba_cursos_ativa' not in st.session_state:
+            st.session_state.aba_cursos_ativa = "👥 Participantes"
+        
+        # Criar as tabs
+        tab1, tab2, tab_abordagens, tab3 = st.tabs([
             "👥 Participantes",  
-            "🚫 Desistências"  
+            "🚫 Impedimentos",
+            "🎯 Abordagens",
+            "📞 Contatos"  
         ])
-    
+        
         with tab1:
+            st.session_state.aba_cursos_ativa = "👥 Participantes"
             st.markdown("#### 👥 Participantes dos Cursos")
-    
             if not df_cursos_combinados.empty:
                 # Mostrar apenas quem participou (PARTICIPOU == 'SIM')
                 if 'PARTICIPOU' in df_cursos_combinados.columns:
@@ -3150,7 +3496,7 @@ def main():
                 if st.button("🧹 Limpar", 
                             key="limpar_participantes_tab1", 
                             use_container_width=True):
-                    st.session_state.pesquisa_participantes = ""
+                    st.session_state.aba_cursos_ativa = "👥 Participantes"
                     st.rerun()
         
                 st.markdown("</div></div>", unsafe_allow_html=True)
@@ -3205,6 +3551,7 @@ def main():
                 st.info("📭 Nenhum participante encontrado.")
     
         with tab2:
+            st.session_state.aba_cursos_ativa = "🚫 Desistências"
             st.markdown("#### 🚫 Desistências - Análise Detalhada")
     
             # ==================== COMBINAR DADOS DE DESISTÊNCIAS ====================
@@ -3278,7 +3625,7 @@ def main():
                 if st.button("🧹 Limpar", 
                             key="limpar_desistencias_tab2", 
                             use_container_width=True):
-                    st.session_state.pesquisa_desistencias = ""
+                    st.session_state.aba_cursos_ativa = "🚫 Desistências"
                     st.rerun()
         
                 st.markdown("</div></div>", unsafe_allow_html=True)
@@ -3364,7 +3711,871 @@ def main():
                 )
     
             else:
-                st.info("📭 Nenhum registro de desistência encontrado.")              
+                st.info("📭 Nenhum registro de desistência encontrado.") 
+
+        with tab_abordagens:
+            st.session_state.aba_cursos_ativa = "🎯 Abordagens" 
+            st.markdown("#### 🎯 Abordagens - Municípios da Bahia")
+            
+             # ===== INICIALIZAR SESSION STATE =====
+            # Estado da página atual
+            if 'pagina_atual_abordagens' not in st.session_state:
+                st.session_state.pagina_atual_abordagens = 1
+            
+            # Estado das abordagens manuais
+            if 'abordagens_bahia' not in st.session_state:
+                st.session_state.abordagens_bahia = carregar_abordagens_do_google_sheets()         
+
+            # Subtítulo explicativo
+            st.markdown("""
+            <div style="background: #fff7e6; border-radius: 10px; padding: 15px; margin-bottom: 20px; border-left: 4px solid #f59e0b;">
+                <p style="color: #475569; margin: 0; font-size: 14px;">
+                <strong>🎯 Objetivo:</strong> Identificar municípios da Bahia que ainda não foram abordados.<br>
+                <strong>📌 Instruções:</strong> Marque os municípios que você já abordou. 
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # === BOTÃO PARA RECARREGAR (FORÇAR LIMPAR CACHE) ===
+            if st.button("🔄 Recarregar Dados", key="recarregar_municipios"):
+                limpar_cache_global()
+                st.session_state.abordagens_bahia = carregar_abordagens_do_google_sheets()
+                st.session_state.aba_cursos_ativa = "🎯 Abordagens"
+                time.sleep(1)
+                st.rerun()
+            
+            # === CARREGAR DADOS ===
+            with st.spinner("🔄 Carregando municípios..."):
+                municipios_bahia = carregar_municipios_bahia()
+                municipios_trabalhados = carregar_municipios_trabalhados()
+                
+                # 🔴 ATUALIZAR O CONJUNTO UNIFICADO APÓS CARREGAR OS DADOS
+                st.session_state.abordados_unificado = set(municipios_trabalhados) | set(st.session_state.abordagens_bahia.keys())
+        
+                # 🔴 CRIAR DUAS LISTAS SEPARADAS 🔴
+                municipios_nao_trabalhados = [mun for mun in municipios_bahia if mun not in municipios_trabalhados]
+                municipios_trabalhados_lista = [mun for mun in municipios_bahia if mun in municipios_trabalhados]
+                
+                # Para compatibilidade com o código existente
+                municipios_disponiveis = municipios_nao_trabalhados.copy()
+            
+            # Métricas
+            col_met1, col_met2, col_met3, col_met4 = st.columns(4)
+            
+            with col_met1:
+                st.metric("🏙️ Total BA", len(municipios_bahia))
+            with col_met2:
+                st.metric("✅ Já Trabalhados", len(municipios_trabalhados))
+            with col_met3:
+                st.metric("🎯 A Abordar", len(municipios_disponiveis))
+            with col_met4:
+                st.metric("📞 Abordagens Feitas", len(st.session_state.abordagens_bahia))
+            
+            st.markdown("---")
+            
+            # Se não há municípios disponíveis
+            if not municipios_disponiveis:
+                st.success("🎉 **PARABÉNS!** Todos os municípios da Bahia já foram trabalhados!")
+                st.balloons()
+            else:
+                
+                # ===== FILTROS =====
+                st.markdown("#### 🔍 Filtros")
+
+                st.markdown("""
+                <style>
+                div[data-testid="stToast"] {
+                    position: fixed;
+                    top: 50% !important;
+                    right: auto !important;
+                    left: 50% !important;
+                    transform: translate(-50%, -50%) !important;
+                    width: auto !important;
+                    min-width: 300px !important;
+                    text-align: center !important;
+                    z-index: 999999 !important;
+                    box-shadow: 0 10px 30px rgba(0,0,0,0.2) !important;
+                    font-size: 16px !important;
+                    padding: 15px 25px !important;
+                }
+                </style>
+                """, unsafe_allow_html=True)
+
+                # ===== FILTROS =====
+               
+                # Callbacks para manter a aba
+                def manter_aba_status():
+                    st.session_state.aba_cursos_ativa = "🎯 Abordagens"
+                
+                def manter_aba_busca():
+                    st.session_state.aba_cursos_ativa = "🎯 Abordagens"
+                
+                # Callback para o status com toast centralizado
+                def ao_mudar_status():
+                    manter_aba_status()
+                    st.toast(f"Filtrando: {st.session_state.filtro_abordagem_status}", icon="📊")
+                
+                col_filtro1, col_filtro2 = st.columns(2)
+                
+                with col_filtro1:
+                    opcoes_filtro = [
+                        "📍 Todos os municípios",
+                        "✅ Abordados",
+                        "⏳ Pendentes"
+                    ]
+                    
+                    filtro_status = st.selectbox(
+                        "Status:",
+                        options=opcoes_filtro,
+                        index=0,
+                        key="filtro_abordagem_status",
+                        on_change=ao_mudar_status
+                    )
+                
+                with col_filtro2:
+                    busca_municipio = st.text_input(
+                        "🔍 Buscar município:",
+                        placeholder="Digite o nome...",
+                        key="busca_municipio_input",
+                        on_change=manter_aba_busca
+                    )
+                    
+                    # Feedback da busca com toast centralizado
+                    if busca_municipio:
+                        if len(busca_municipio) < 3:
+                            st.toast("💡 Digite pelo menos 3 caracteres para buscar", icon="💡")
+                        else:
+                            st.toast(f"🔍 Buscando por '{busca_municipio}'...", icon="🔍")
+
+                    # Verificar se a busca mudou
+                    if 'ultima_busca' not in st.session_state:
+                        st.session_state.ultima_busca = ""
+
+                    if busca_municipio != st.session_state.get('ultima_busca', ''):
+                        st.session_state.ultima_busca = busca_municipio
+                        st.session_state.aba_cursos_ativa = "🎯 Abordagens"
+                        st.rerun()
+                
+                # ===== APLICAR FILTROS =====
+                # Usar o conjunto unificado
+                municipios_abordados_set = st.session_state.abordados_unificado
+                
+                # Aplicar filtro de status
+                if filtro_status == "📍 Todos os municípios":
+                    municipios_filtrados = municipios_bahia.copy()
+                elif filtro_status == "✅ Abordados":
+                    municipios_filtrados = [m for m in municipios_bahia if m in municipios_abordados_set]
+                else:  # Pendentes
+                    municipios_filtrados = [m for m in municipios_bahia if m not in municipios_abordados_set]
+                
+                # Aplicar filtro de busca textual
+                if busca_municipio:
+                    busca_upper = busca_municipio.upper().strip()
+                    municipios_filtrados = [
+                        m for m in municipios_filtrados 
+                        if busca_upper == m or 
+                           m.startswith(busca_upper + " ") or 
+                           m.endswith(" " + busca_upper) or 
+                           f" {busca_upper} " in f" {m} "
+                    ]
+                
+                # Mostrar métricas atualizadas
+                col_count1, col_count2, col_count3 = st.columns(3)
+                with col_count1:
+                    st.metric("📍 Total", len(municipios_bahia))
+                with col_count2:
+                    st.metric("✅ Abordados", len(municipios_abordados_set))
+                with col_count3:
+                    st.metric("⏳ Pendentes", len(municipios_bahia) - len(municipios_abordados_set))
+                
+                st.info(f"📌 **{len(municipios_filtrados)}** municípios exibidos")
+
+                # ===== LISTA DE MUNICÍPIOS COM PAGINAÇÃO =====
+                st.markdown("---")
+                
+                if municipios_filtrados:
+                    # ===== CALCULAR PAGINAÇÃO PRIMEIRO =====
+                    itens_por_pagina = 30
+                    total_municipios = len(municipios_filtrados)
+                    total_paginas = (total_municipios - 1) // itens_por_pagina + 1
+                    
+                    # Garantir que a página atual é válida
+                    if st.session_state.pagina_atual_abordagens > total_paginas:
+                        st.session_state.pagina_atual_abordagens = 1
+                    
+                    # === HEADER DA SEÇÃO ===
+                    col_header1, col_header2 = st.columns([3, 1])
+                    
+                    with col_header1:
+                        # Definir título baseado no filtro atual
+                        if filtro_status == "✅ Abordados":
+                            titulo_secao = "Municípios Abordados"
+                            cor_titulo = "#10b981"  # Verde
+                            icone_titulo = "✅"
+                        elif filtro_status == "⏳ Pendentes":
+                            titulo_secao = "Municípios Pendentes"
+                            cor_titulo = "#f59e0b"  # Laranja
+                            icone_titulo = "⏳"
+                        else:  # Todos os municípios
+                            titulo_secao = "Todos os Municípios"
+                            cor_titulo = "#1e293b"  # Cinza escuro
+                            icone_titulo = "📍"
+                        
+                        # Verificar se é uma busca específica (apenas 1 resultado)
+                        if busca_municipio and len(municipios_filtrados) == 1:
+                            municipio_unico = municipios_filtrados[0]
+                            
+                            # Verificar se está em participantes ou impedimentos
+                            if municipio_unico in municipios_trabalhados:
+                                titulo = f"Município já abordado: {municipio_unico.title()}"
+                                cor_titulo = "#10b981"
+                                icone = "✅"
+                            else:
+                                titulo = f"Município para abordar: {municipio_unico.title()}"
+                                cor_titulo = "#f59e0b"
+                                icone = "📍"
+                            
+                            st.markdown(f"""
+                            <div style="display: flex; align-items: baseline; gap: 12px;">
+                                <h3 style="color: {cor_titulo}; font-size: 22px; font-weight: 700; margin: 0;">
+                                    {icone} {titulo}
+                                </h3>
+                                <span style="background: {PRIMARY_COLOR}20; color: {PRIMARY_COLOR}; padding: 4px 12px; border-radius: 20px; font-size: 14px; font-weight: 600;">
+                                    1 município
+                                </span>
+                            </div>
+                            """, unsafe_allow_html=True)
+                        else:
+                            # Título baseado no filtro
+                            st.markdown(f"""
+                            <div style="display: flex; align-items: baseline; gap: 12px;">
+                                <h3 style="color: {cor_titulo}; font-size: 22px; font-weight: 700; margin: 0;">
+                                    {icone_titulo} {titulo_secao}
+                                </h3>
+                                <span style="background: {PRIMARY_COLOR}20; color: {PRIMARY_COLOR}; padding: 4px 12px; border-radius: 20px; font-size: 14px; font-weight: 600;">
+                                    {total_municipios} municípios
+                                </span>
+                            </div>
+                            """, unsafe_allow_html=True)
+                    
+                    with col_header2:
+                        st.markdown(f"""
+                        <div style="text-align: right; color: #64748b; font-size: 14px;">
+                            Página <span style="font-weight: 700; color: {PRIMARY_COLOR};">{st.session_state.pagina_atual_abordagens}</span> de {total_paginas}
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    st.markdown("<div style='margin-bottom: 20px;'></div>", unsafe_allow_html=True)
+                    
+                    # ===== PAGINAÇÃO COMPACTA =====
+                    col_pag1, col_pag2, col_pag3 = st.columns([1, 1, 5])
+                    
+                    with col_pag1:
+                        btn_anterior = st.button(
+                            "← Anterior", 
+                            key="pag_anterior_pro",
+                            disabled=st.session_state.pagina_atual_abordagens <= 1,
+                            use_container_width=True,
+                            type="secondary"
+                        )
+                        if btn_anterior:
+                            st.session_state.pagina_atual_abordagens -= 1
+                            st.session_state.aba_cursos_ativa = "🎯 Abordagens"  # ← LINHA IMPORTANTE!
+                            st.rerun()
+
+                    with col_pag2:
+                        btn_proxima = st.button(
+                            "Próxima →", 
+                            key="pag_proxima_pro",
+                            disabled=st.session_state.pagina_atual_abordagens >= total_paginas,
+                            use_container_width=True,
+                            type="secondary"
+                        )
+                        if btn_proxima:
+                            st.session_state.pagina_atual_abordagens += 1
+                            st.session_state.aba_cursos_ativa = "🎯 Abordagens"  # ← LINHA IMPORTANTE!
+                            st.rerun()
+                    
+                    with col_pag3:
+                        inicio = (st.session_state.pagina_atual_abordagens - 1) * itens_por_pagina + 1
+                        fim = min(st.session_state.pagina_atual_abordagens * itens_por_pagina, total_municipios)
+                        st.markdown(f"""
+                        <div style="display: flex; justify-content: flex-end; align-items: center; height: 38px;">
+                            <span style="color: #475569; font-size: 14px; background: #f8fafc; padding: 8px 16px; border-radius: 8px; border: 1px solid #e2e8f0;">
+                                📍 <strong>{inicio}-{fim}</strong> de <strong>{total_municipios}</strong> municípios
+                            </span>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    # ===== CARDS DOS MUNICÍPIOS =====
+                    municipios_ordenados = sorted(municipios_filtrados)
+                    municipios_pagina = municipios_ordenados[inicio-1:fim]
+                    
+                    # Carregar atendentes
+                    opcoes = carregar_opcoes_dropdown()
+                    atendentes = opcoes.get('atendentes_sdr', ['SAMIRA', 'RISIA'])
+                    
+                    # Layout em grid profissional
+                    cols_por_linha = 3
+                    
+                    for i in range(0, len(municipios_pagina), cols_por_linha):
+                        cols = st.columns(cols_por_linha)
+                        for j in range(cols_por_linha):
+                            idx = i + j
+                            if idx < len(municipios_pagina):
+                                municipio = municipios_pagina[idx]
+                                abordadores = st.session_state.abordagens_bahia.get(municipio, [])
+                                
+                                with cols[j]:
+                                    # Card profissional
+                                    with st.container():
+                                        # Status colorido - AGORA USA 1 OU 0
+                                        abordador_atual = st.session_state.abordagens_bahia.get(municipio, None)
+                                        
+                                        if abordador_atual:
+                                            status_color = "#10b981"
+                                            status_bg = "#f0fdf4"
+                                            status_icon = "✅"
+                                            status_count = 1
+                                        else:
+                                            status_color = "#94a3b8"
+                                            status_bg = "#f8fafc"
+                                            status_icon = "⏳"
+                                            status_count = 0
+                                        
+                                        # Cabeçalho do card
+                                        st.markdown(f"""
+                                        <div style="
+                                            background: white;
+                                            border: 1px solid #e2e8f0;
+                                            border-radius: 12px;
+                                            padding: 16px;
+                                            margin-bottom: 16px;
+                                            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+                                        ">
+                                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                                <span style="font-size: 16px; font-weight: 700; color: #1e293b;">
+                                                    {municipio.title()}
+                                                </span>
+                                                <span style="
+                                                    background: {status_bg};
+                                                    color: {status_color};
+                                                    padding: 4px 10px;
+                                                    border-radius: 20px;
+                                                    font-size: 12px;
+                                                    font-weight: 600;
+                                                    border: 1px solid {status_color}30;
+                                                ">
+                                                    {status_icon} {status_count}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        """, unsafe_allow_html=True)
+                                    
+                                    # Área de ação - VERSÃO SIMPLIFICADA (SUBSTITUI DIRETO)
+                                    col_att, col_btn = st.columns([1.5, 1])
+
+                                    with col_att:
+                                        # Definir o índice baseado no abordador atual
+                                        indice_inicial = 0
+                                        if abordador_atual and abordador_atual in atendentes:
+                                            indice_inicial = atendentes.index(abordador_atual) + 1
+                                        
+                                        atendente_opt = st.selectbox(
+                                            "Atendente",
+                                            options=[""] + atendentes,
+                                            key=f"att_{municipio}_{idx}_{st.session_state.pagina_atual_abordagens}",
+                                            label_visibility="collapsed",
+                                            index=indice_inicial,
+                                            placeholder="SDR"
+                                        )
+
+                                    with col_btn:
+                                        if atendente_opt:
+                                            if st.button(
+                                                "✓ Marcar" if not abordador_atual else "🔄 Substituir",
+                                                key=f"marcar_{municipio}_{idx}",
+                                                use_container_width=True,
+                                                type="primary"
+                                            ):
+                                                marcar_municipio_abordado(municipio, atendente_opt)
+                                                # 🔥 NOVO: Salvar no Google Sheets
+                                                salvar_abordagens_no_google_sheets()
+                                                # Atualizar conjunto unificado
+                                                st.session_state.abordados_unificado = set(municipios_trabalhados) | set(st.session_state.abordagens_bahia.keys())
+                                                st.session_state.aba_cursos_ativa = "🎯 Abordagens"
+                                                st.rerun()
+
+                                        elif abordador_atual:
+                                            if st.button(
+                                                "✕ Desmarcar",
+                                                key=f"desmarcar_{municipio}_{idx}",
+                                                use_container_width=True,
+                                                type="secondary"
+                                            ):
+                                                desmarcar_municipio_abordado(municipio)
+                                                # 🔥 NOVO: Salvar no Google Sheets
+                                                salvar_abordagens_no_google_sheets()
+                                                st.session_state.abordados_unificado = set(municipios_trabalhados) | set(st.session_state.abordagens_bahia.keys())
+                                                st.session_state.aba_cursos_ativa = "🎯 Abordagens"
+                                                st.rerun()
+                                                
+                                                                           
+                                    # Quem abordou (agora mostra apenas um nome)
+                                    if abordador_atual:
+                                        st.markdown(f"""
+                                        <div style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed #e2e8f0;">
+                                            <span style="font-size: 11px; color: #64748b;">
+                                                👤 {abordador_atual}
+                                            </span>
+                                        </div>
+                                        """, unsafe_allow_html=True)
+                    
+                    # ===== RODAPÉ DA PAGINAÇÃO =====
+                    col_rodape1, col_rodape2 = st.columns([3, 1])
+                    
+                    with col_rodape1:
+                        if total_paginas > 1:
+                            paginas_mostrar = []
+                            p_atual = st.session_state.pagina_atual_abordagens
+                            
+                            if total_paginas <= 7:
+                                paginas_mostrar = list(range(1, total_paginas + 1))
+                            else:
+                                if p_atual <= 4:
+                                    paginas_mostrar = [1, 2, 3, 4, 5, '...', total_paginas]
+                                elif p_atual >= total_paginas - 3:
+                                    paginas_mostrar = [1, '...', total_paginas-4, total_paginas-3, total_paginas-2, total_paginas-1, total_paginas]
+                                else:
+                                    paginas_mostrar = [1, '...', p_atual-1, p_atual, p_atual+1, '...', total_paginas]
+                            
+                            cols_pag = st.columns(len(paginas_mostrar))
+                            for i, valor_pagina in enumerate(paginas_mostrar):  # ← Nome alterado
+                                with cols_pag[i]:
+                                    if valor_pagina == '...':
+                                        st.markdown("<div style='text-align: center; color: #94a3b8;'>...</div>", unsafe_allow_html=True)
+                                    else:
+                                        if st.button(
+                                            f"{valor_pagina}",
+                                            key=f"pag_{valor_pagina}",
+                                            type="primary" if valor_pagina == p_atual else "secondary",
+                                            use_container_width=True
+                                        ):
+                                            st.session_state.pagina_atual_abordagens = valor_pagina
+                                            st.session_state.aba_cursos_ativa = "🎯 Abordagens"
+                                            st.rerun()
+                    
+                    with col_rodape2:
+                        if st.button("📥 Exportar CSV", key="exportar_municipios", use_container_width=True):
+                            df_export = pd.DataFrame({
+                                'Município': municipios_filtrados,
+                                'Status': ['Abordado' if m in st.session_state.abordagens_bahia else 'Pendente' for m in municipios_filtrados],
+                                'Abordado_por': [', '.join(st.session_state.abordagens_bahia.get(m, [])) for m in municipios_filtrados]
+                            })
+                            csv_data = df_export.to_csv(index=False, encoding='utf-8-sig')
+                            st.download_button(
+                                label="📥 Download",
+                                data=csv_data,
+                                file_name=f"municipios_ba_{datetime.now().strftime('%Y%m%d')}.csv",
+                                mime="text/csv",
+                                key="download_csv"
+                            )
+                
+                else:
+                    # Estado vazio
+                    st.markdown(f"""
+                    <div style="
+                        background: white;
+                        border: 1px solid #e2e8f0;
+                        border-radius: 16px;
+                        padding: 60px 20px;
+                        text-align: center;
+                        margin: 20px 0;
+                    ">
+                        <div style="font-size: 48px; margin-bottom: 16px; opacity: 0.5;">🎯</div>
+                        <h4 style="color: #1e293b; font-size: 18px; font-weight: 600; margin-bottom: 8px;">
+                            Nenhum município encontrado
+                        </h4>
+                        <p style="color: #64748b; font-size: 14px; max-width: 400px; margin: 0 auto;">
+                            Tente ajustar os filtros ou recarregar os dados.
+                        </p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                # ===== BOTÃO DE EXPORTAÇÃO =====
+                if municipios_filtrados:
+                    st.markdown("---")
+                    
+                    from datetime import datetime  # ← Import local explícito
+                    
+                    agora = datetime.now()  # ← Variável local
+                    
+                    # Criar DataFrame para exportação
+                    df_export = pd.DataFrame({
+                        'Município': municipios_filtrados,
+                        'Status': ['Abordado' if m in st.session_state.abordagens_bahia else 'Pendente' for m in municipios_filtrados],
+                        'Abordado_por': [st.session_state.abordagens_bahia.get(m, '') for m in municipios_filtrados]  # Agora é string, não lista
+                    })
+                    
+                    csv_data = df_export.to_csv(index=False, encoding='utf-8-sig')
+                    st.download_button(
+                        label="📥 Exportar Lista de Municípios",
+                        data=csv_data,
+                        file_name=f"municipios_abordagem_{agora.strftime('%Y%m%d_%H%M')}.csv",
+                        mime="text/csv",
+                        use_container_width=True
+                    )
+
+
+        with tab3:
+            st.session_state.aba_cursos_ativa = "📞 Contatos"
+            st.markdown("#### 📞 Contatos - Abordagens Realizadas")
+    
+            # Subtítulo explicativo
+            st.markdown("""
+            <div style="background: #f8f7ff; border-radius: 10px; padding: 15px; margin-bottom: 20px; border-left: 4px solid #522b7b;">
+                <p style="color: #475569; margin: 0; font-size: 14px;">
+                <strong>🎯 Objetivo:</strong> Registrar abordagens realizadas pelas atendentes para cursos oferecidos.<br>
+                <strong>💡 Dica:</strong> Você pode buscar um lead já cadastrado ou criar um novo contato.
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Carregar opções
+            opcoes = carregar_opcoes_dropdown()
+            
+            # Duas abas dentro da aba Contatos
+            tab_contato_novo, tab_contato_lista = st.tabs(["📝 Novo Contato", "📋 Contatos Registrados"])
+            
+            with tab_contato_novo:
+                st.markdown("### 📝 Registrar Novo Contato")
+    
+                # DEBUG FORA DO FORMULÁRIO
+                st.write("🔍 **DEBUG INICIADO**")
+    
+                # Buscar leads FORA do formulário para debug
+                leads_disponiveis = buscar_leads_para_contato()
+                st.write(f"🔍 Total de leads encontrados: {len(leads_disponiveis)}")
+    
+                # ===== PARTE 1: SELEÇÃO DO LEAD (FORA DO FORMULÁRIO) =====
+                st.markdown("#### 🔍 Passo 1: Selecione um Lead")
+    
+                opcoes_display = ["-- Criar novo contato --"] + [lead['display'] for lead in leads_disponiveis]
+    
+                lead_selecionado = st.selectbox(
+                    "Buscar lead cadastrado:",
+                    options=opcoes_display,
+                    index=0,
+                    help="Selecione um lead já cadastrado para preencher automaticamente os dados",
+                    key="select_lead_fora_do_form"  # Chave diferente, fora do form
+                )
+    
+                # Processar a seleção do lead
+                lead_info = None
+                if lead_selecionado != "-- Criar novo contato --":
+                    for lead in leads_disponiveis:
+                        if lead['display'] == lead_selecionado:
+                            lead_info = lead
+                            st.success(f"✅ Lead selecionado: {lead_info['nome']}")
+                            st.write("📊 Dados do lead:", lead_info)
+                            break
+    
+                # ===== PARTE 2: FORMULÁRIO PARA OS DADOS =====
+                st.markdown("#### 📝 Passo 2: Preencha os Dados do Contato")
+                
+                with st.form("form_novo_contato"):
+                    # Seção 2: Dados do Contato (usando lead_info já encontrado)
+                    st.markdown("""
+                    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid #f1f5f9;">
+                        <div style="background: linear-gradient(135deg, #10b981 0%, #34d399 100%); color: white; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px;">👤</div>
+                        <h3 style="color: #1e293b; font-size: 18px; font-weight: 700; margin: 0;">Informações do Contato</h3>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        # Se tem lead selecionado, preencher automaticamente
+                        nome_default = lead_info['nome'] if lead_info else ""
+                        email_default = lead_info['email'] if lead_info else ""
+                        telefone_default = lead_info['telefone'] if lead_info else ""
+                        cargo_default = lead_info['cargo'] if lead_info else ""
+                        
+                        nome = st.text_input("Nome *", value=nome_default, placeholder="Nome completo", key="contato_nome")
+                        email = st.text_input("E-mail *", value=email_default, placeholder="email@empresa.com", key="contato_email")
+                        telefone = st.text_input("Telefone *", value=telefone_default, placeholder="(00) 00000-0000", key="contato_telefone")
+                        cargo = st.text_input("Cargo/Função", value=cargo_default, placeholder="Gerente, Coordenador, etc.", key="contato_cargo")
+                    
+                    with col2:
+                        # Se tem lead selecionado, preencher automaticamente
+                        if lead_info:
+                            ente_default = lead_info.get('ente', '')
+                            estado_default = lead_info.get('estado', '')
+                            municipio_default = lead_info.get('cidade', '')
+                        else:
+                            ente_default = ""
+                            estado_default = ""
+                            municipio_default = ""
+                        
+                        ente = st.text_input("Ente *", value=ente_default, placeholder="PM, CM, Secretaria, etc.", key="contato_ente")
+                        
+                        # Para o estado, precisamos verificar se o valor existe na lista
+                        estado_index = 0
+                        if estado_default and estado_default in opcoes['estados']:
+                            estado_index = opcoes['estados'].index(estado_default) + 1
+                        
+                        estado = st.selectbox("Estado *", options=[""] + opcoes['estados'], index=estado_index, key="contato_estado")
+                        municipio = st.text_input("Município *", value=municipio_default, placeholder="Nome do município", key="contato_municipio")
+        
+                    # Seção 3: Dados da Abordagem
+                    st.markdown("""
+                    <div style="display: flex; align-items: center; gap: 12px; margin: 30px 0 20px 0; padding-bottom: 15px; border-bottom: 2px solid #f1f5f9;">
+                        <div style="background: linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%); color: white; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px;">📞</div>
+                        <h3 style="color: #1e293b; font-size: 18px; font-weight: 700; margin: 0;">Dados da Abordagem</h3>
+                    </div>
+                    """, unsafe_allow_html=True)
+        
+                    col3, col4 = st.columns(2)
+        
+                    with col3:
+                        data_contato = st.date_input("Data do Contato *", value=date.today(), key="contato_data_UNICO")
+                        status_contato = st.selectbox("Status *", options=[""] + opcoes['status_contato'], index=0, key="contato_status_UNICO")
+                        objetivo = st.selectbox("Objetivo *", options=[""] + opcoes['objetivos_contato'], index=0, key="contato_objetivo_UNICO")
+                        curso_oferecido = st.selectbox("Curso Oferecido *", options=[""] + opcoes['cursos_oferecidos'], index=0, key="contato_curso_UNICO")
+        
+                    with col4:
+                        data_curso_inicio = st.date_input("Data Início Curso", value=None, key="contato_data_inicio_UNICO")
+                        data_curso_fim = st.date_input("Data Fim Curso", value=None, key="contato_data_fim_UNICO")
+                        proximo_contato = st.date_input("Próximo Contato", value=None, key="contato_proximo_UNICO")
+        
+                    # Seção 4: Equipe
+                    st.markdown("""
+                    <div style="display: flex; align-items: center; gap: 12px; margin: 30px 0 20px 0; padding-bottom: 15px; border-bottom: 2px solid #f1f5f9;">
+                        <div style="background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%); color: white; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px;">👥</div>
+                        <h3 style="color: #1e293b; font-size: 18px; font-weight: 700; margin: 0;">Equipe Responsável</h3>
+                    </div>
+                    """, unsafe_allow_html=True)
+        
+                    col5, col6 = st.columns(2)
+        
+                    with col5:
+                        atendente_sdr = st.selectbox("Atendente SDR *", options=[""] + opcoes['atendentes_sdr'], index=0, key="contato_sdr_UNICO")
+        
+                    with col6:
+                        consultor = st.selectbox("Consultor *", options=[""] + opcoes['consultores'], index=0, key="contato_consultor_UNICO")
+        
+                    # Seção 5: Observações (CORRIGIDO - com label)
+                    st.markdown('<div style="color: #475569; font-size: 14px; font-weight: 600; margin: 30px 0 8px 0;">Observações</div>', unsafe_allow_html=True)
+                    observacoes = st.text_area("Observações", placeholder="Detalhes da conversa, informações relevantes...", height=100, key="contato_obs_UNICO")
+        
+                    # BOTÃO DE ENVIO (OBRIGATÓRIO para st.form)
+                    submitted = st.form_submit_button(
+                        "💾 Salvar Contato",
+                        use_container_width=True,
+                        type="primary"
+                    )
+        
+                    # Processar envio do formulário (APENAS se clicar no botão)
+                    if submitted:
+                        # Validação básica
+                        campos_obrigatorios = ['nome', 'email', 'telefone', 'ente', 'estado', 'municipio', 'status_contato', 'objetivo', 'curso_oferecido', 'atendente_sdr', 'consultor']
+            
+                        erros = []
+                        if not nome:
+                            erros.append("Nome")
+                        if not email:
+                            erros.append("E-mail")
+                        if not telefone:
+                            erros.append("Telefone")
+                        if not ente:
+                            erros.append("Ente")
+                        if not estado:
+                            erros.append("Estado")
+                        if not municipio:
+                            erros.append("Município")
+                        if not status_contato:
+                            erros.append("Status do Contato")
+                        if not objetivo:
+                            erros.append("Objetivo")
+                        if not curso_oferecido:
+                            erros.append("Curso Oferecido")
+                        if not atendente_sdr:
+                            erros.append("Atendente SDR")
+                        if not consultor:
+                            erros.append("Consultor")
+            
+                        if erros:
+                            st.error(f"❌ Campos obrigatórios não preenchidos: {', '.join(erros)}")
+                        else:
+                            # Preparar dados do contato
+                            dados_contato = {
+                                'ID_Lead': lead_info['id'] if lead_info else '',
+                                'Nome': nome,
+                                'Email': email,
+                                'Telefone': telefone,
+                                'Cargo_Funcao': cargo,
+                                'Ente': ente,
+                                'Estado': estado,
+                                'Municipio': municipio,
+                                'Data_Contato': data_contato.strftime("%Y-%m-%d"),
+                                'Status_Contato': status_contato,
+                                'Objetivo': objetivo,
+                                'Curso_Oferecido': curso_oferecido,
+                                'Data_Curso_Inicio': data_curso_inicio.strftime("%Y-%m-%d") if data_curso_inicio else '',
+                                'Data_Curso_Fim': data_curso_fim.strftime("%Y-%m-%d") if data_curso_fim else '',
+                                'Observacoes': observacoes,
+                                'Proximo_Contato': proximo_contato.strftime("%Y-%m-%d") if proximo_contato else '',
+                                'Atendente_SDR': atendente_sdr,
+                                'Consultor': consultor
+                            }
+                
+                            # Salvar contato
+                            sucesso, mensagem = salvar_novo_contato(dados_contato)
+                
+                            if sucesso:
+                                st.success(mensagem)
+                                st.balloons()
+                                # Limpar formulário (recarregar a página)
+                                time.sleep(2)
+                                st.rerun()
+                            else:
+                                st.error(mensagem)
+            
+            with tab_contato_lista:
+                st.markdown("### 📋 Contatos Registrados")
+                
+                try:
+                    # Carregar contatos
+                    df_contatos = carregar_contatos()
+                    
+                    if df_contatos is not None and not df_contatos.empty:
+                        st.success(f"📊 **Total de {len(df_contatos)} contatos registrados**")
+                                    
+                        # ===== FILTROS AVANÇADOS =====
+                        st.markdown("#### 🔍 Filtros")
+                                    
+                        col_filtro1, col_filtro2, col_filtro3 = st.columns(3)
+                                    
+                        with col_filtro1:
+                            # Filtrar por Status
+                            status_unique = ["Todos"] + sorted(df_contatos['Status_Contato'].dropna().unique().tolist())
+                            filtro_status = st.selectbox("Status", options=status_unique, index=0)
+                                    
+                        with col_filtro2:
+                        # Filtrar por Consultor
+                            consultores_unique = ["Todos"] + sorted(df_contatos['Consultor'].dropna().unique().tolist())
+                            filtro_consultor = st.selectbox("Consultor", options=consultores_unique, index=0)
+                                    
+                        with col_filtro3:
+                            # Filtrar por Curso
+                            cursos_unique = ["Todos"] + sorted(df_contatos['Curso_Oferecido'].dropna().unique().tolist())
+                            filtro_curso = st.selectbox("Curso Oferecido", options=cursos_unique, index=0)
+                                    
+                        # ===== BUSCA EM TEXTO =====
+                        busca_contato = st.text_input("🔍 Buscar em todos os campos:", 
+                                                    placeholder="Digite nome, email, município...",
+                                                    key="busca_contatos")
+                                    
+                        # ===== APLICAR FILTROS =====
+                        df_filtrado = df_contatos.copy()
+                                    
+                        # Aplicar filtro de status
+                        if filtro_status != "Todos":
+                            df_filtrado = df_filtrado[df_filtrado['Status_Contato'] == filtro_status]
+                                    
+                        # Aplicar filtro de consultor
+                        if filtro_consultor != "Todos":
+                            df_filtrado = df_filtrado[df_filtrado['Consultor'] == filtro_consultor]
+                                    
+                        # Aplicar filtro de curso
+                        if filtro_curso != "Todos":
+                            df_filtrado = df_filtrado[df_filtrado['Curso_Oferecido'] == filtro_curso]
+                                    
+                        # Aplicar busca em texto
+                        if busca_contato:
+                            mask = pd.Series([False] * len(df_filtrado))
+                            for col in df_filtrado.columns:
+                                if df_filtrado[col].dtype == 'object':
+                                    mask = mask | df_filtrado[col].astype(str).str.contains(busca_contato, case=False, na=False)
+                            df_filtrado = df_filtrado[mask]
+                                    
+                        # ===== MOSTRAR RESULTADOS =====
+                        st.info(f"📋 **{len(df_filtrado)} contatos filtrados**")
+                                    
+                        if len(df_filtrado) > 0:
+                            # Selecionar colunas importantes para mostrar
+                            colunas_importantes = [
+                                'ID_Contato', 'Nome', 'Email', 'Telefone', 'Ente',
+                                'Municipio', 'Estado', 'Status_Contato', 'Curso_Oferecido',
+                                'Data_Contato', 'Consultor', 'Atendente_SDR'
+                            ]
+                                        
+                            # Garantir que as colunas existem
+                            colunas_disponiveis = [col for col in colunas_importantes if col in df_filtrado.columns]
+                                        
+                            # Mostrar tabela
+                            st.dataframe(
+                                df_filtrado[colunas_disponiveis],
+                                use_container_width=True,
+                                height=400,
+                                hide_index=True,
+                                column_config={
+                                    'ID_Contato': st.column_config.TextColumn("ID", width="small"),
+                                    'Nome': st.column_config.TextColumn("Nome", width="medium"),
+                                    'Email': st.column_config.TextColumn("E-mail", width="medium"),
+                                    'Telefone': st.column_config.TextColumn("Telefone", width="small"),
+                                    'Status_Contato': st.column_config.TextColumn("Status", width="small"),
+                                    'Curso_Oferecido': st.column_config.TextColumn("Curso", width="medium"),
+                                    'Data_Contato': st.column_config.DateColumn("Data Contato", format="DD/MM/YYYY"),
+                                }
+                            )
+                                        
+                            # ===== ESTATÍSTICAS =====
+                            st.markdown("#### 📊 Estatísticas")
+                                        
+                            col_stat1, col_stat2, col_stat3 = st.columns(3)
+                                        
+                            with col_stat1:
+                                # Contatos por status
+                                status_counts = df_filtrado['Status_Contato'].value_counts()
+                                st.metric("Status", f"{len(status_counts)} tipos")
+                                            
+                                # Mostrar distribuição
+                                if len(status_counts) > 0:
+                                    for status, count in status_counts.items():
+                                        st.caption(f"• {status}: {count}")
+                                        
+                            with col_stat2:
+                                # Contatos por consultor
+                                consultor_counts = df_filtrado['Consultor'].value_counts()
+                                st.metric("Consultores", f"{len(consultor_counts)} ativos")
+                                        
+                            with col_stat3:
+                                # Contatos por curso
+                                curso_counts = df_filtrado['Curso_Oferecido'].value_counts()
+                                st.metric("Cursos", f"{len(curso_counts)} tipos")
+                                        
+                            # ===== BOTÃO DE EXPORTAÇÃO =====
+                            st.markdown("---")
+                            csv_data = df_filtrado.to_csv(index=False, encoding='utf-8-sig')
+                            st.download_button(
+                                label="📥 Exportar Contatos Filtrados (CSV)",
+                                data=csv_data,
+                                file_name=f"contatos_filtrados_{datetime.now().strftime('%Y%m%d')}.csv",
+                                mime="text/csv",
+                                use_container_width=True
+                            )
+                        else:
+                            st.warning("Nenhum contato encontrado com os filtros aplicados.")
+                                    
+                    else:
+                        st.info("📭 Nenhum contato registrado ainda.")
+                                    
+                except Exception as e:
+                    st.error(f"❌ Erro ao carregar contatos: {e}")
+                    import traceback
+                    st.write(traceback.format_exc())
+                    st.info("📭 Não foi possível carregar a lista de contatos.")             
 
     elif menu == "Relatórios":
         # Relatórios
