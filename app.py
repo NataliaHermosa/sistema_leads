@@ -3753,21 +3753,17 @@ def main():
                 municipios_bahia = carregar_municipios_bahia()
                 municipios_trabalhados = carregar_municipios_trabalhados()
                 
-                # 🔥 CORREÇÃO: Inicializar no session_state
-                if 'municipios_trabalhados_set' not in st.session_state:
-                    st.session_state.municipios_trabalhados_set = set(municipios_trabalhados)
-                else:
-                    # Manter as marcações manuais
-                    municipios_trabalhados = sorted(st.session_state.municipios_trabalhados_set | set(st.session_state.abordagens_bahia.keys()))
+                # 🔥 UNIFICAR: planilha + marcações manuais
+                municipios_trabalhados = sorted(set(municipios_trabalhados) | set(st.session_state.abordagens_bahia.keys()))
                 
-                # 🔴 ATUALIZAR O CONJUNTO UNIFICADO APÓS CARREGAR OS DADOS
-                st.session_state.abordados_unificado = set(municipios_trabalhados) | set(st.session_state.abordagens_bahia.keys())
+                # 🔴 ATUALIZAR O CONJUNTO UNIFICADO
+                st.session_state.abordados_unificado = set(municipios_trabalhados)
         
-                # 🔴 CRIAR DUAS LISTAS SEPARADAS 🔴
+                # 🔴 CRIAR LISTAS SEPARADAS
                 municipios_nao_trabalhados = [mun for mun in municipios_bahia if mun not in municipios_trabalhados]
                 municipios_trabalhados_lista = [mun for mun in municipios_bahia if mun in municipios_trabalhados]
                 
-                # Para compatibilidade com o código existente
+                # Para compatibilidade
                 municipios_disponiveis = municipios_nao_trabalhados.copy()
             
             # 🟢 BARRA DE PROGRESSO - SOMENTE MUNICÍPIOS DA BAHIA 🟢
@@ -4119,50 +4115,39 @@ def main():
 
                                     with col_btn:
                                         if atendente_opt:
-                                            if st.button(
-                                                "✓ Marcar" if not abordador_atual else "🔄 Substituir",
-                                                key=f"marcar_{municipio}_{idx}",
-                                                use_container_width=True,
-                                                type="primary"
-                                            ):
-                                                marcar_municipio_abordado(municipio, atendente_opt)
-                                                salvar_abordagens_no_google_sheets()
-                                                
-                                                # 🔥 CORREÇÃO: Atualizar no session_state
-                                                if 'municipios_trabalhados_set' not in st.session_state:
-                                                    st.session_state.municipios_trabalhados_set = set(municipios_trabalhados)
-                                                
-                                                st.session_state.municipios_trabalhados_set.add(municipio)
-                                                municipios_trabalhados = sorted(st.session_state.municipios_trabalhados_set)
-                                                
-                                                st.session_state.abordados_unificado = set(municipios_trabalhados) | set(st.session_state.abordagens_bahia.keys())
-                                                st.session_state.aba_cursos_ativa = "🎯 Abordagens"
-                                                st.rerun()
-
-                                        elif abordador_atual:
+                                            if not abordador_atual:
+                                                if st.button(
+                                                    "✓ Marcar",
+                                                    key=f"marcar_{municipio}_{idx}_{st.session_state.pagina_atual_abordagens}",
+                                                    use_container_width=True,
+                                                    type="primary"
+                                                ):
+                                                    marcar_municipio_abordado(municipio, atendente_opt)
+                                                    salvar_abordagens_no_google_sheets()
+                                                    st.session_state.aba_cursos_ativa = "🎯 Abordagens"
+                                                    st.rerun()
+                                            else:
+                                                if st.button(
+                                                    "🔄 Substituir",
+                                                    key=f"substituir_{municipio}_{idx}_{st.session_state.pagina_atual_abordagens}",
+                                                    use_container_width=True,
+                                                    type="primary"
+                                                ):
+                                                    marcar_municipio_abordado(municipio, atendente_opt)
+                                                    salvar_abordagens_no_google_sheets()
+                                                    st.session_state.aba_cursos_ativa = "🎯 Abordagens"
+                                                    st.rerun()
+                                        elif abordador_atual and not atendente_opt:
                                             if st.button(
                                                 "✕ Desmarcar",
-                                                key=f"desmarcar_{municipio}_{idx}",
+                                                key=f"desmarcar_{municipio}_{idx}_{st.session_state.pagina_atual_abordagens}",
                                                 use_container_width=True,
                                                 type="secondary"
                                             ):
                                                 desmarcar_municipio_abordado(municipio)
-                                                # 🔥 NOVO: Salvar no Google Sheets
                                                 salvar_abordagens_no_google_sheets()
-                                                st.session_state.abordados_unificado = set(municipios_trabalhados) | set(st.session_state.abordagens_bahia.keys())
                                                 st.session_state.aba_cursos_ativa = "🎯 Abordagens"
                                                 st.rerun()
-                                                
-                                                                           
-                                    # Quem abordou (agora mostra apenas um nome)
-                                    if abordador_atual:
-                                        st.markdown(f"""
-                                        <div style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed #e2e8f0;">
-                                            <span style="font-size: 11px; color: #64748b;">
-                                                👤 {abordador_atual}
-                                            </span>
-                                        </div>
-                                        """, unsafe_allow_html=True)
                     
                     # ===== RODAPÉ DA PAGINAÇÃO =====
                     col_rodape1, col_rodape2 = st.columns([3, 1])
@@ -4258,7 +4243,6 @@ def main():
                         mime="text/csv",
                         use_container_width=True
                     )
-
 
         with tab3:
             st.session_state.aba_cursos_ativa = "📞 Contatos"
