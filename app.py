@@ -3753,8 +3753,12 @@ def main():
                 municipios_bahia = carregar_municipios_bahia()
                 municipios_trabalhados = carregar_municipios_trabalhados()
                 
-                # 🔥 CORREÇÃO: Adicionar as marcações manuais aos trabalhados
-                municipios_trabalhados = sorted(set(municipios_trabalhados) | set(st.session_state.abordagens_bahia.keys()))
+                # 🔥 CORREÇÃO: Inicializar no session_state
+                if 'municipios_trabalhados_set' not in st.session_state:
+                    st.session_state.municipios_trabalhados_set = set(municipios_trabalhados)
+                else:
+                    # Manter as marcações manuais
+                    municipios_trabalhados = sorted(st.session_state.municipios_trabalhados_set | set(st.session_state.abordagens_bahia.keys()))
                 
                 # 🔴 ATUALIZAR O CONJUNTO UNIFICADO APÓS CARREGAR OS DADOS
                 st.session_state.abordados_unificado = set(municipios_trabalhados) | set(st.session_state.abordagens_bahia.keys())
@@ -4122,13 +4126,15 @@ def main():
                                                 type="primary"
                                             ):
                                                 marcar_municipio_abordado(municipio, atendente_opt)
-                                                # 🔥 NOVO: Salvar no Google Sheets
                                                 salvar_abordagens_no_google_sheets()
-
-                                                # 🔥 CORREÇÃO: Atualizar municipios_trabalhados
-                                                municipios_trabalhados = sorted(set(municipios_trabalhados) | {municipio})
                                                 
-                                                # Atualizar conjunto unificado
+                                                # 🔥 CORREÇÃO: Atualizar no session_state
+                                                if 'municipios_trabalhados_set' not in st.session_state:
+                                                    st.session_state.municipios_trabalhados_set = set(municipios_trabalhados)
+                                                
+                                                st.session_state.municipios_trabalhados_set.add(municipio)
+                                                municipios_trabalhados = sorted(st.session_state.municipios_trabalhados_set)
+                                                
                                                 st.session_state.abordados_unificado = set(municipios_trabalhados) | set(st.session_state.abordagens_bahia.keys())
                                                 st.session_state.aba_cursos_ativa = "🎯 Abordagens"
                                                 st.rerun()
