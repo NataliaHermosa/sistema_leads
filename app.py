@@ -1196,6 +1196,7 @@ def get_valores_padrao():
         'equipe': []
     }
 
+@st.cache_data(ttl=86400)  # Cache de 24 horas - dados quase estáticos
 def carregar_cidades_por_estado():
     """Carrega cidades organizadas por estado"""
     cidades_por_estado = {}
@@ -1271,6 +1272,7 @@ def carregar_cidades_por_estado():
     except Exception:
         return {}
 
+@st.cache_data(ttl=3600)  # Cache de 1 hora - dados de configuração mudam pouco
 def carregar_opcoes_dropdown():
     """Carrega opções para dropdowns"""
     opcoes = get_valores_padrao()
@@ -1426,6 +1428,7 @@ def salvar_lead_no_google_sheets(novo_lead):
 # 12. FUNÇÕES PARA A NOVA ABA "CONTATOS"
 # ============================================================================
 
+@st.cache_resource
 def verificar_aba_contatos():
     """Verifica se a aba 'contatos' existe e tem estrutura correta"""
     try:
@@ -1446,7 +1449,7 @@ def verificar_aba_contatos():
         st.error(f"❌ Erro ao acessar aba 'contatos': {e}")
         return None
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=300)
 def carregar_contatos():
     """Carrega todos os contatos da aba 'contatos'"""
     try:
@@ -1518,6 +1521,7 @@ def salvar_novo_contato(dados_contato):
     except Exception as e:
         return False, f"❌ Erro ao salvar contato: {e}"
 
+@st.cache_data(ttl=300)  # Cache de 5 minutos
 def buscar_leads_para_contato():
     """Busca leads para seleção no formulário de contatos"""
     try:
@@ -1671,7 +1675,7 @@ def limpar_numeros(texto):
         return ''
     return ''.join(filter(str.isdigit, str(texto)))
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=300)
 def load_leads():
     """Carrega dados de leads da planilha Google Sheets"""
     try:
@@ -1992,7 +1996,6 @@ def inicializar_estado_abordagens():
 
 def marcar_municipio_abordado(municipio, atendente):
     """Marca um município como abordado por um atendente (substitui o anterior)"""
-    # Agora é apenas uma string, não mais uma lista
     st.session_state.abordagens_bahia[municipio] = atendente
     return True
 
@@ -2035,6 +2038,7 @@ def salvar_abordagens_no_google_sheets():
         st.error(f"Erro ao salvar abordagens: {e}")
         return False
 
+@st.cache_data(ttl=60)  # Cache de 1 minuto
 def carregar_abordagens_do_google_sheets():
     """Carrega as marcações manuais da aba 'abordagens_manuais'"""
     try:
