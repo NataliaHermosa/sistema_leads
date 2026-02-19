@@ -1449,7 +1449,7 @@ def verificar_aba_contatos():
         st.error(f"❌ Erro ao acessar aba 'contatos': {e}")
         return None
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=600)
 def carregar_contatos():
     """Carrega todos os contatos da aba 'contatos'"""
     try:
@@ -1675,7 +1675,7 @@ def limpar_numeros(texto):
         return ''
     return ''.join(filter(str.isdigit, str(texto)))
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=600)
 def load_leads():
     """Carrega dados de leads da planilha Google Sheets"""
     try:
@@ -1898,7 +1898,7 @@ def importar_dados_cursos_automatico():
      
 
 # ============================================================================
-# 16. FUNÇÕES PARA ABA DE ABORDAGENS (MUNICÍPIOS BAHIA) - COM CACHE
+# 17. FUNÇÕES PARA ABA DE ABORDAGENS (MUNICÍPIOS BAHIA) - COM CACHE
 # ============================================================================
 
 @st.cache_data(ttl=86400)
@@ -1970,7 +1970,7 @@ def carregar_municipios_trabalhados():
         return []
 
 # ============================================================================
-# 17. LIMPAR CACHE MANUALMENTE
+# 18. LIMPAR CACHE MANUALMENTE
 # ============================================================================   
 
 def limpar_cache_global():
@@ -2025,20 +2025,22 @@ def salvar_abordagens_no_google_sheets():
             worksheet = planilha.add_worksheet(title="abordagens_manuais", rows="1000", cols="2")
             worksheet.append_row(["Município", "SDR"])
         
-        # Limpar dados antigos (manter cabeçalho)
-        worksheet.clear()
-        worksheet.append_row(["Município", "SDR"])
-        
-        # Salvar todas as abordagens atuais
-        for municipio, sdr in st.session_state.abordagens_bahia.items():
-            worksheet.append_row([municipio, sdr])
-        
+        st.success("✅ Dados salvos com sucesso!")
         return True
+        
+    except gspread.exceptions.APIError as e:
+        if '429' in str(e):
+            st.warning("⚠️ Limite de requisições excedido. Aguarde um momento...")
+            time.sleep(2)
+        else:
+            st.error(f"Erro na API: {e}")
+        return False
+        
     except Exception as e:
         st.error(f"Erro ao salvar abordagens: {e}")
         return False
 
-@st.cache_data(ttl=60)  # Cache de 1 minuto
+@st.cache_data(ttl=300)  # Cache de 1 minuto
 def carregar_abordagens_do_google_sheets():
     """Carrega as marcações manuais da aba 'abordagens_manuais'"""
     try:
@@ -4124,6 +4126,7 @@ def main():
                                                 ):
                                                     marcar_municipio_abordado(municipio, atendente_opt)
                                                     salvar_abordagens_no_google_sheets()
+                                                    time.sleep(0.5)
                                                     st.session_state.aba_cursos_ativa = "🎯 Abordagens"
                                                     st.rerun()
                                             else:
@@ -4135,6 +4138,7 @@ def main():
                                                 ):
                                                     marcar_municipio_abordado(municipio, atendente_opt)
                                                     salvar_abordagens_no_google_sheets()
+                                                    time.sleep(0.5)
                                                     st.session_state.aba_cursos_ativa = "🎯 Abordagens"
                                                     st.rerun()
                                         elif abordador_atual and not atendente_opt:
@@ -4146,6 +4150,7 @@ def main():
                                             ):
                                                 desmarcar_municipio_abordado(municipio)
                                                 salvar_abordagens_no_google_sheets()
+                                                time.sleep(0.5)
                                                 st.session_state.aba_cursos_ativa = "🎯 Abordagens"
                                                 st.rerun()
                     
