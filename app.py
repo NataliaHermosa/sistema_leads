@@ -3753,6 +3753,9 @@ def main():
                 municipios_bahia = carregar_municipios_bahia()
                 municipios_trabalhados = carregar_municipios_trabalhados()
                 
+                # 🔥 CORREÇÃO: Adicionar as marcações manuais aos trabalhados
+                municipios_trabalhados = sorted(set(municipios_trabalhados) | set(st.session_state.abordagens_bahia.keys()))
+                
                 # 🔴 ATUALIZAR O CONJUNTO UNIFICADO APÓS CARREGAR OS DADOS
                 st.session_state.abordados_unificado = set(municipios_trabalhados) | set(st.session_state.abordagens_bahia.keys())
         
@@ -4121,6 +4124,10 @@ def main():
                                                 marcar_municipio_abordado(municipio, atendente_opt)
                                                 # 🔥 NOVO: Salvar no Google Sheets
                                                 salvar_abordagens_no_google_sheets()
+
+                                                # 🔥 CORREÇÃO: Atualizar municipios_trabalhados
+                                                municipios_trabalhados = sorted(set(municipios_trabalhados) | {municipio})
+                                                
                                                 # Atualizar conjunto unificado
                                                 st.session_state.abordados_unificado = set(municipios_trabalhados) | set(st.session_state.abordagens_bahia.keys())
                                                 st.session_state.aba_cursos_ativa = "🎯 Abordagens"
