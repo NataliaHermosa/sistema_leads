@@ -3766,14 +3766,17 @@ def main():
             # 🟢 BARRA DE PROGRESSO - SOMENTE MUNICÍPIOS DA BAHIA 🟢
             total_municipios_bahia = len(municipios_bahia)  # 417
             
-            # Apenas municípios da Bahia que estão na planilha
-            municipios_bahia_na_planilha = [mun for mun in municipios_trabalhados if mun in municipios_bahia]
-            abordados_planilha = len(municipios_bahia_na_planilha)  # 86
+            # Municípios da planilha (já trabalhados)
+            municipios_planilha_bahia = [mun for mun in municipios_trabalhados if mun in municipios_bahia]
             
-            # Os que ainda não foram abordados (total - abordados na planilha)
-            faltam_abordar = total_municipios_bahia - abordados_planilha  # 331
+            # JÁ ABORDADOS = planilha + manuais
+            municipios_abordados_set = set(municipios_planilha_bahia) | set(st.session_state.abordagens_bahia.keys())
+            total_abordados = len(municipios_abordados_set)
             
-            percentual = int((abordados_planilha / total_municipios_bahia) * 100)  # 21%
+            # PENDENTES = total - abordados
+            pendentes = total_municipios_bahia - total_abordados
+            
+            percentual = int((total_abordados / total_municipios_bahia) * 100)
             
             st.markdown(f"""
             <div style="background: white; border-radius: 16px; padding: 20px; margin-bottom: 25px; border: 1px solid #e2e8f0;">
@@ -3782,16 +3785,19 @@ def main():
                         🎯 Progresso de Abordagens - Bahia
                     </span>
                     <span style="font-size: 20px; font-weight: 700; color: {PRIMARY_COLOR};">
-                        {abordados_planilha}/{total_municipios_bahia}
+                        {total_abordados}/{total_municipios_bahia}
                     </span>
                 </div>
                 <div style="width: 100%; height: 12px; background: #f1f5f9; border-radius: 6px; overflow: hidden; margin-bottom: 10px;">
-                    <div style="width: {percentual}%; height: 100%; background: linear-gradient(90deg, {PRIMARY_COLOR}, #8b5cf6); border-radius: 6px;"></div>
+                    <div style="width: {percentual}%; height: 100%; background: linear-gradient(90deg, {PRIMARY_COLOR}, #8b5cf6); border-radius: 6px; transition: width 0.3s ease;"></div>
                 </div>
                 <div style="display: flex; justify-content: space-between; color: #64748b; font-size: 13px;">
-                    <span>✅ Já abordados: {abordados_planilha}</span>
-                    <span>⏳ Ainda faltam: {faltam_abordar}</span>
+                    <span>✅ Já abordados: {total_abordados}</span>
+                    <span>⏳ Ainda faltam: {pendentes}</span>
                     <span>📊 {percentual}% concluído</span>
+                </div>
+                <div style="font-size: 11px; color: #94a3b8; margin-top: 8px; text-align: center;">
+                    📋 {len(municipios_planilha_bahia)} da planilha • ✍️ {len(st.session_state.abordagens_bahia)} manuais
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -3881,7 +3887,7 @@ def main():
                 
                 # ===== APLICAR FILTROS =====
                 # Usar o conjunto unificado
-                municipios_abordados_set = st.session_state.abordados_unificado
+                municipios_abordados_set = set(municipios_planilha_bahia) | set(st.session_state.abordagens_bahia.keys())
                 
                 # Aplicar filtro de status
                 if filtro_status == "📍 Todos os municípios":
