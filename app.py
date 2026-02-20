@@ -2025,6 +2025,14 @@ def salvar_abordagens_no_google_sheets():
             worksheet = planilha.add_worksheet(title="abordagens_manuais", rows="1000", cols="2")
             worksheet.append_row(["Município", "SDR"])
         
+        # 🔥 LIMPAR DADOS ANTIGOS (manter cabeçalho)
+        worksheet.clear()
+        worksheet.append_row(["Município", "SDR"])
+        
+        # 🔥 SALVAR TODAS AS ABORDAGENS ATUAIS
+        for municipio, sdr in st.session_state.abordagens_bahia.items():
+            worksheet.append_row([municipio, sdr])
+        
         st.success("✅ Dados salvos com sucesso!")
         return True
         
@@ -2039,7 +2047,7 @@ def salvar_abordagens_no_google_sheets():
     except Exception as e:
         st.error(f"Erro ao salvar abordagens: {e}")
         return False
-
+    
 @st.cache_data(ttl=300)  # Cache de 1 minuto
 def carregar_abordagens_do_google_sheets():
     """Carrega as marcações manuais da aba 'abordagens_manuais'"""
@@ -4607,4 +4615,4 @@ def main():
         st.markdown('</div>', unsafe_allow_html=True)
         
 if __name__ == "__main__":
-    main()
+    main()                                        
