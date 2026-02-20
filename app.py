@@ -2012,7 +2012,7 @@ def desmarcar_municipio_abordado(municipio):
 # ============================================================================
 
 def salvar_abordagens_no_google_sheets():
-    """Salva as marcações manuais na aba 'abordagens_manuais' do Google Sheets"""
+    """Salva as marcações manuais na aba 'abordagens_manuais' do Google Sheets com proteção contra erro 429"""
     try:
         creds = get_credentials()
         client = gspread.authorize(creds)
@@ -2024,29 +2024,76 @@ def salvar_abordagens_no_google_sheets():
         except gspread.exceptions.WorksheetNotFound:
             worksheet = planilha.add_worksheet(title="abordagens_manuais", rows="1000", cols="2")
             worksheet.append_row(["Município", "SDR"])
+            return True
         
-        # 🔥 LIMPAR DADOS ANTIGOS (manter cabeçalho)
-        worksheet.clear()
-        worksheet.append_row(["Município", "SDR"])
-        
-        # 🔥 SALVAR TODAS AS ABORDAGENS ATUAIS
+        # Preparar todos os dados em memória primeiro
+        todos_dados = [["Município", "SDR"]]  # Cabeçalho
         for municipio, sdr in st.session_state.abordagens_bahia.items():
-            worksheet.append_row([municipio, sdr])
+            todos_dados.append([municipio, sdr])
         
-        st.success("✅ Dados salvos com sucesso!")
-        return True
+        # Se não há dados, só manter cabeçalho
+        if len(todos_dados) == 1:
+            worksheet.clear()
+            worksheet.append_row(["Município", "SDR"])
+            return True
         
-    except gspread.exceptions.APIError as e:
-        if '429' in str(e):
-            st.warning("⚠️ Limite de requisições excedido. Aguarde um momento...")
-            time.sleep(2)
-        else:
-            st.error(f"Erro na API: {e}")
-        return False
-        
+        # SALVAR TUDO DE UMA VEZ (em lotes de 50 para não sobrecarregar)
+        try:
+            # Limpar a planilha
+            worksheet.clear()
+            
+            # Adicionar em lotes de 50 linhas
+            for i in range(0, len(todos_dados), 50):
+                lote = todos_dados[i:i+50]
+                worksheet.append_rows(lote, value_input_option='USER_ENTERED')
+                time.sleep(0.2)  # Pequena pausa entre lotes
+            
+            st.success(f"✅ {len(todos_dados)-1} registros salvos com sucesso!")
+            return True
+            
+        except gspread.exceptions.APIError as e:
+            if '429' in str(e):
+                st.warning("⚠️ Limite de requisições excedido. Salvando em modo de segurança...")
+                time.sleep(2)
+                
+                # TENTATIVA DE RECUPERAÇÃO: Salvar um por um com delay
+                worksheet.clear()
+                worksheet.append_row(["Município", "SDR"])
+                
+                for municipio, sdr in st.session_state.abordagens_bahia.items():
+                    for tentativa in range(3):  # 3 tentativas por item
+                        try:
+                            worksheet.append_row([municipio, sdr])
+                            time.sleep(0.3)  # Delay entre cada salvamento
+                            break
+                        except gspread.exceptions.APIError as e2:
+                            if '429' in str(e2) and tentativa < 2:
+                                time.sleep(1)  # Espera mais tempo
+                            else:
+                                st.error(f"❌ Não foi possível salvar {municipio}")
+                                return False
+                return True
+            else:
+                st.error(f"Erro na API: {e}")
+                return False
+                
     except Exception as e:
         st.error(f"Erro ao salvar abordagens: {e}")
         return False
+    
+def salvar_backup_local():
+    """Salva um backup local em caso de falha na API"""
+    try:
+        import json
+        backup = {
+            'timestamp': datetime.now().isoformat(),
+            'dados': st.session_state.abordagens_bahia
+        }
+        with open('backup_abordagens.json', 'w') as f:
+            json.dump(backup, f)
+        st.warning("💾 Backup local salvo! Os dados serão recuperados quando a API voltar.")
+    except:
+        pass
     
 @st.cache_data(ttl=300)  # Cache de 1 minuto
 def carregar_abordagens_do_google_sheets():
